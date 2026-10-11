@@ -106,7 +106,7 @@ namespace Ledjoro
         {
             var upd = new Card(); upd.Padding = new Padding(Theme.Px(24)); upd.Gap = Theme.Px(10);
             upd.Add(new Lbl("Updates", LS.H3));
-            upd.Add(new Lbl("Ledjoro looks for a newer version only when you click the button below. It contacts GitHub (github.com/" + Updater.Repo + ") and tells it nothing about you or your books. A new version is checked against the fingerprint GitHub published for it before it is installed, and your current Ledjoro.exe is kept as a backup in the same folder.", LS.Muted, true), Theme.Px(2));
+            upd.Add(new Lbl("Ledjoro looks for a newer version only when you click the button below. It contacts GitHub (github.com/" + Updater.Repo + ") and tells it nothing about you or your books. A new version is installed only if it carries Ledjoro\u2019s release signature (made with a key that is never stored on GitHub), and your current Ledjoro.exe is kept as a backup in the same folder.", LS.Muted, true), Theme.Px(2));
             var result = new Stack { Fill = Pnl.K.Surface, Gap = Theme.Px(8) };
             Action<Control, Control> show = (a, b) => { result.ClearItems(); result.Add(a); if (b != null) result.Add(b); Vx.Relayout(upd); page.PerformLayout(); };
             Btn check = null;

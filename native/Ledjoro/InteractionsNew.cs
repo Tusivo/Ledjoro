@@ -159,16 +159,29 @@ namespace Ledjoro
             // ---- About ---------------------------------------------------------------------------------------------------
             {
                 check(System.Text.RegularExpressions.Regex.IsMatch(AboutScreen.Version, @"^\d+\.\d+\.\d+(-[a-z]+\.\d+)?$"), "the program knows its version number (" + AboutScreen.Version + ")");
-                check(AboutScreen.Version == "0.9.1-beta.1", "the version is 0.9.1-beta.1");
+                check(AboutScreen.Version == "0.9.2-beta.1", "the version is 0.9.2-beta.1");
                 check(Updater.Compare("0.9.0-beta.1", "v0.9.0-beta.2") < 0 && Updater.Compare("0.9.0-beta.2", "0.9.0") < 0 && Updater.Compare("0.9.0", "0.10.0") < 0 && Updater.Compare("v1.0.0", "1.0.0") == 0 && Updater.Compare("0.9.0-beta.10", "0.9.0-beta.9") > 0, "version numbers are put in the right order");
                 {
                     string dl = "https://github.com/" + Updater.Repo + "/releases/download/";
-                    var list = Json.Parse("[{\"tag_name\":\"v0.9.0-beta.1\",\"draft\":false,\"name\":\"a\",\"assets\":[{\"name\":\"Ledjoro.exe\",\"size\":5,\"browser_download_url\":\"" + dl + "v0.9.0-beta.1/Ledjoro.exe\"}]},"
-                        + "{\"tag_name\":\"v0.9.0-beta.2\",\"draft\":false,\"name\":\"b\",\"body\":\"notes\",\"assets\":[{\"name\":\"Ledjoro.exe\",\"size\":2000000,\"digest\":\"sha256:ABC\",\"browser_download_url\":\"" + dl + "v0.9.0-beta.2/Ledjoro.exe\"}]},"
+                    var list = Json.Parse("[{\"tag_name\":\"v0.9.0-beta.1\",\"draft\":false,\"name\":\"a\",\"assets\":[{\"name\":\"Ledjoro.exe\",\"size\":5,\"browser_download_url\":\"" + dl + "v0.9.0-beta.1/Ledjoro.exe\"},{\"name\":\"Ledjoro.exe.sig\",\"size\":300,\"browser_download_url\":\"" + dl + "v0.9.0-beta.1/Ledjoro.exe.sig\"}]},"
+                        + "{\"tag_name\":\"v0.9.0-beta.2\",\"draft\":false,\"name\":\"b\",\"body\":\"notes\",\"assets\":[{\"name\":\"Ledjoro.exe\",\"size\":2000000,\"digest\":\"sha256:ABC\",\"browser_download_url\":\"" + dl + "v0.9.0-beta.2/Ledjoro.exe\"},{\"name\":\"Ledjoro.exe.sig\",\"size\":300,\"browser_download_url\":\"" + dl + "v0.9.0-beta.2/Ledjoro.exe.sig\"}]},"
+                        + "{\"tag_name\":\"v5.0.0\",\"draft\":false,\"assets\":[{\"name\":\"Ledjoro.exe\",\"size\":2000000,\"browser_download_url\":\"" + dl + "v5.0.0/Ledjoro.exe\"}]},"
                         + "{\"tag_name\":\"v9.9.9\",\"draft\":true,\"assets\":[{\"name\":\"Ledjoro.exe\",\"size\":1,\"browser_download_url\":\"" + dl + "v9.9.9/Ledjoro.exe\"}]},"
                         + "{\"tag_name\":\"v8.0.0\",\"draft\":false,\"assets\":[{\"name\":\"Ledjoro.exe\",\"size\":1,\"browser_download_url\":\"https://evil.example/Ledjoro.exe\"}]}]");
                     var pick = Updater.Pick(list);
-                    check(pick != null && pick.Version == "0.9.0-beta.2" && pick.Sha256 == "abc" && pick.Notes == "notes", "the update check picks the newest published release (not a draft, not a file from somewhere else)");
+                    check(pick != null && pick.Version == "0.9.0-beta.2" && pick.Sha256 == "abc" && pick.Notes == "notes", "the update check picks the newest published release (not a draft, not a file from somewhere else, not one without a signature file)");
+                    check(pick != null && pick.SigUrl.EndsWith("v0.9.0-beta.2/Ledjoro.exe.sig"), "it knows where the signature file is");
+                    {   // signatures: made by scripts/release-sign.js with a throwaway key; the program must accept exactly this and nothing else
+                        byte[] pub = Convert.FromBase64String("pXCuPTR9jDuKgQrNp56xnJPeFgXBX5F6zjmif+OFgs+ncVWkYzLYDl9zQwYvQMxn4TuVAIJTQEfgr+0FZ5VbHA==");
+                        string vsha = "3a311faa59b0bae41cb73dfbe2aaa1c140938d76f7e825f73321923bea681dd9", vsig = "{\"format\":1,\"version\":\"7.7.7-test.1\",\"sha256\":\"3a311faa59b0bae41cb73dfbe2aaa1c140938d76f7e825f73321923bea681dd9\",\"signature\":\"Y1+XbyJVi4eVxQaEVwl0fPduevIebndPvUiP3IU5SOMHnaVwgnM/+OEOcIutnQSacrWzlI7QOTy7KOIDSI/0vQ==\"}";
+                        Func<Action, bool> refused = act => { try { act(); return false; } catch (Updater.UpdateError) { return true; } };
+                        bool good = !refused(() => Updater.VerifySignature(vsig, vsha, "v7.7.7-test.1", pub));
+                        check(good, "a signature made by the signing script (in Node) verifies in the program (in .NET)");
+                        var otherKey = (byte[])pub.Clone(); otherKey[5] ^= 1;
+                        check(refused(() => Updater.VerifySignature(vsig, vsha, "7.7.7-test.1", otherKey)) && refused(() => Updater.VerifySignature(vsig, vsha, "7.7.8-test.1", pub)) && refused(() => Updater.VerifySignature(vsig, vsha.Replace('3', '4'), "7.7.7-test.1", pub))
+                            && refused(() => Updater.VerifySignature(vsig.Replace("Y1+X", "Y1+Y"), vsha, "7.7.7-test.1", pub)) && refused(() => Updater.VerifySignature("{broken", vsha, "7.7.7-test.1", pub)) && refused(() => Updater.VerifySignature(vsig, vsha, "7.7.7-test.1", null)),
+                            "a different key, version, file or signature, a damaged signature file, or a program with no key is refused");
+                    }
                     string td = Path.Combine(Path.GetTempPath(), "ledjoro-upd-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(td);
                     try
                     {

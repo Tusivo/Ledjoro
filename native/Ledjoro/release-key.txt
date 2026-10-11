@@ -1,0 +1,3 @@
+# Ledjoro release signing public key (ECDSA P-256, X then Y, base64). Built into every Ledjoro.exe so it can check updates.
+# The private key is never stored in this repository. See docs/RELEASING.md.
++Ji3pcib7Sq997iE3oGGSQ+20JEJVduovA3fQqtce0OUD0bpRHglQfQa/ewNCLesWqd9Peq+2WhF7kPZLI/MhA==

@@ -1,6 +1,6 @@
 {
   "name": "ledjoro",
-  "version": "0.9.1-beta.1",
+  "version": "0.9.2-beta.1",
   "description": "Self-hosted, open-source small-business accounting with importers for common QuickBooks interchange formats.",
   "license": "AGPL-3.0-or-later",
   "private": true,

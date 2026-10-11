@@ -16,3 +16,5 @@ obj/
 *.exe.sha256
 Ledjoro-Data/
 Personal.CSV
+*.pem
+*.sig

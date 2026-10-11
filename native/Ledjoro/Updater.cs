@@ -21,7 +21,7 @@ namespace Ledjoro
 
         public sealed class Release
         {
-            public string Tag = "", Version = "", Title = "", Notes = "", Page = "", AssetName = "", AssetUrl = "", Sha256 = "";
+            public string Tag = "", Version = "", Title = "", Notes = "", Page = "", AssetName = "", AssetUrl = "", SigUrl = "", Sha256 = "";
             public long Size;
         }
 
@@ -81,10 +81,14 @@ namespace Ledjoro
                     if (asset == null || string.Equals(n, "Ledjoro.exe", StringComparison.OrdinalIgnoreCase)) asset = a;
                 }
                 if (asset == null) continue;
+                // a release is only offered when it carries a signature file next to the program (Ledjoro.exe.sig)
+                Jv sig = null;
+                foreach (var a in r["assets"].Items) { string u = a["browser_download_url"].Str ?? ""; if (string.Equals(a["name"].Str, asset["name"].Str + ".sig", StringComparison.OrdinalIgnoreCase) && u.StartsWith(DownloadPrefix, StringComparison.Ordinal) && a["size"].Long > 0 && a["size"].Long < 16384) sig = a; }
+                if (sig == null) continue;
                 var rel = new Release
                 {
                     Tag = tag, Version = Clean(tag), Title = r["name"].Str ?? tag, Notes = r["body"].Str ?? "", Page = r["html_url"].Str ?? "",
-                    AssetName = asset["name"].Str, AssetUrl = asset["browser_download_url"].Str, Size = asset["size"].Long
+                    AssetName = asset["name"].Str, AssetUrl = asset["browser_download_url"].Str, SigUrl = sig["browser_download_url"].Str, Size = asset["size"].Long
                 };
                 string digest = asset["digest"].Str ?? ""; if (digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)) rel.Sha256 = digest.Substring(7).ToLowerInvariant();
                 if (best == null || Compare(rel.Version, best.Version) > 0) best = rel;
@@ -105,13 +109,14 @@ namespace Ledjoro
         public static async Task<Release> Check(string current)
         {
             if (App.SelfTesting) return null;   // the self-test never goes to the internet
+            if (PublicKey() == null) throw new UpdateError("This copy of Ledjoro does not carry the release signing key, so it cannot check that an update is genuine. Download the newest Ledjoro.exe from the releases page instead.");
             using (var c = Client(20))
             {
                 var resp = await c.GetAsync("https://api.github.com/repos/" + Repo + "/releases?per_page=30");
                 if (resp.StatusCode == HttpStatusCode.NotFound) throw new UpdateError("No releases have been published for Ledjoro yet.");
                 if (!resp.IsSuccessStatusCode) throw new UpdateError("GitHub answered with an error (" + (int)resp.StatusCode + "). Try again in a few minutes.");
                 var best = Pick(Json.Parse(await resp.Content.ReadAsStringAsync()));
-                if (best == null) throw new UpdateError("No release with a Ledjoro program file attached was found.");
+                if (best == null) throw new UpdateError("No signed release of Ledjoro was found. Download the newest Ledjoro.exe from the releases page instead.");
                 return Compare(best.Version, current) > 0 ? best : null;
             }
         }
@@ -123,6 +128,53 @@ namespace Ledjoro
         public static string HashOf(string path)
         {
             using (var f = File.OpenRead(path)) using (var h = SHA256.Create()) return string.Concat(h.ComputeHash(f).Select(b => b.ToString("x2")));
+        }
+
+        // ---- the release signature -------------------------------------------------------------------------------------
+
+        /// <summary>The release signing public key built into this program (64 bytes: X then Y of an ECDSA P-256 key), or null when this build has none.</summary>
+        public static byte[] PublicKey()
+        {
+            try
+            {
+                using (var s = typeof(Updater).Assembly.GetManifestResourceStream("release-key.txt"))
+                {
+                    if (s == null) return null;
+                    using (var r = new StreamReader(s, Encoding.UTF8))
+                    {
+                        string b64 = string.Concat(r.ReadToEnd().Replace("\r", "").Split('\n').Where(l => l.Trim().Length > 0 && !l.StartsWith("#")));
+                        var raw = Convert.FromBase64String(b64); return raw.Length == 64 ? raw : null;
+                    }
+                }
+            }
+            catch (Exception) { return null; }
+        }
+
+        public static byte[] SignedMessage(string version, string sha256) { return Encoding.UTF8.GetBytes("ledjoro-release-v1\n" + Clean(version) + "\n" + sha256 + "\n"); }
+
+        /// <summary>
+        /// Passes silently when <paramref name="sigText"/> is a signature, made with the release key, for exactly this version and this file (by SHA-256).
+        /// Throws UpdateError saying why when it is not. The version is part of what was signed, so an old signed program cannot be passed off as a new one.
+        /// </summary>
+        public static void VerifySignature(string sigText, string sha256, string version, byte[] publicKey)
+        {
+            if (publicKey == null || publicKey.Length != 64) throw new UpdateError("This copy of Ledjoro does not carry the release signing key, so it cannot check that an update is genuine. Download the newest Ledjoro.exe from the releases page instead.");
+            Jv j; try { j = Json.Parse(sigText); } catch (Exception) { throw new UpdateError("The update's signature file could not be read, so the update was thrown away."); }
+            if (j["format"].Long != 1) throw new UpdateError("The update's signature is in a format this version of Ledjoro does not know. Download the newest Ledjoro.exe from the releases page instead.");
+            if (!string.Equals(j["version"].Str, Clean(version), StringComparison.Ordinal)) throw new UpdateError("The update's signature is for a different version, so the update was thrown away.");
+            if (!string.Equals((j["sha256"].Str ?? "").ToLowerInvariant(), sha256, StringComparison.Ordinal)) throw new UpdateError("The update's signature is for a different file than the one downloaded, so the update was thrown away.");
+            byte[] sig; try { sig = Convert.FromBase64String(j["signature"].Str ?? ""); } catch (FormatException) { sig = new byte[0]; }
+            bool ok = false;
+            if (sig.Length == 64)
+            {
+                try
+                {
+                    var q = new System.Security.Cryptography.ECParameters { Curve = System.Security.Cryptography.ECCurve.NamedCurves.nistP256, Q = new System.Security.Cryptography.ECPoint { X = publicKey.Take(32).ToArray(), Y = publicKey.Skip(32).ToArray() } };
+                    using (var ec = System.Security.Cryptography.ECDsa.Create(q)) ok = ec.VerifyData(SignedMessage(version, sha256), sig, System.Security.Cryptography.HashAlgorithmName.SHA256);
+                }
+                catch (Exception) { ok = false; }
+            }
+            if (!ok) throw new UpdateError("The update is not signed with Ledjoro's release key, so it was thrown away. If you reached this by clicking Check for Updates on a normal release, please report it under Support.");
         }
 
         /// <summary>Checks a downloaded file against what GitHub said about it. Throws UpdateError when anything is off.</summary>
@@ -160,6 +212,9 @@ namespace Ledjoro
                     }
                 }
                 Verify(tmp, r);
+                string sigText;
+                using (var c2 = Client(60)) { var sr = await c2.GetAsync(r.SigUrl); if (!sr.IsSuccessStatusCode) throw new UpdateError("GitHub would not send the update's signature (" + (int)sr.StatusCode + "), so the update was not installed."); sigText = await sr.Content.ReadAsStringAsync(); }
+                VerifySignature(sigText, HashOf(tmp), r.Version, PublicKey());
                 return tmp;
             }
             catch (Exception) { try { File.Delete(tmp); } catch (Exception) { } throw; }

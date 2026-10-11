@@ -8,10 +8,10 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>Ledjoro</AssemblyName>
     <RootNamespace>Ledjoro</RootNamespace>
-    <Version>0.9.1-beta.1</Version>
-    <AssemblyVersion>0.9.1.0</AssemblyVersion>
-    <FileVersion>0.9.1.1</FileVersion>
-    <InformationalVersion>0.9.1-beta.1</InformationalVersion>
+    <Version>0.9.2-beta.1</Version>
+    <AssemblyVersion>0.9.2.0</AssemblyVersion>
+    <FileVersion>0.9.2.1</FileVersion>
+    <InformationalVersion>0.9.2-beta.1</InformationalVersion>
     <Product>Ledjoro</Product>
   </PropertyGroup>
   <!-- The camera (for scanning the recovery QR code) uses Windows' own camera API. It is compiled in only when the Windows SDK metadata file is found;
@@ -36,7 +36,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System.Net.Http" />
-    <EmbeddedResource Include="..\..\README.md" LogicalName="readme.md" />   <!-- the About page shows an excerpt of it -->
+    <EmbeddedResource Include="..\..\README.md" LogicalName="readme.md" />
+    <EmbeddedResource Include="release-key.txt" LogicalName="release-key.txt" Condition="Exists('release-key.txt')" />   <!-- the public key updates must be signed with (made by: node scripts/release-sign.js keygen) -->   <!-- the About page shows an excerpt of it -->
   </ItemGroup>
   <!-- scripts/build-native.js passes these: the engine executable and its SHA-256 are embedded so Ledjoro.exe is a single file. -->
   <ItemGroup Condition="'$(EnginePath)' != ''">
