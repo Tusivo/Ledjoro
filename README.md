@@ -8,7 +8,7 @@ On that page, open the newest release and download **Ledjoro.exe** under **Asset
 
 > **This is a beta (v0.9.2-beta.1).** It works and has been tested a great deal, but it has not yet been used on many real companies or had an independent security review. Keep your own backups, and have an accountant look over your books before relying on them. See [SECURITY.md](SECURITY.md) and [LEGAL.md](LEGAL.md).
 
-![Ledjoro dashboard showing cash in bank, what customers owe, and what needs attention](docs/screenshots/dashboard.png)
+![Ledjoro dashboard showing cash in bank, what customers owe, and what needs attention](docs/screenshots/dashboard-light.png)
 *The dashboard: cash, what you are owed, what you owe, and what needs a look. (Sample company.)*
 
 ## Get started in three steps
@@ -87,19 +87,19 @@ The theme is **Light** until you choose another; the choice is saved in `Ledjoro
 
 See [docs/FEATURE-MAP.md](docs/FEATURE-MAP.md) for what is done, partial, planned, or deliberately out of scope compared with the QuickBooks Online Advanced research.
 
-![An invoice with sales tax: the rate is chosen, each line has a Tax box, and the tax and total update as you type](docs/screenshots/sales-tax-invoice.png)
+![An invoice with sales tax: the rate is chosen, each line has a Tax box, and the tax and total update as you type](docs/screenshots/sales-tax-invoice-night.png)
 *Sales tax on an invoice: choose the rate, tick the taxable lines, and Ledjoro adds the tax.*
 
-![Sales tax return worksheet showing sales, tax by jurisdiction and the tax due](docs/screenshots/sales-tax-worksheet.png)
+![Sales tax return worksheet showing sales, tax by jurisdiction and the tax due](docs/screenshots/sales-tax-worksheet-dark.png)
 *The sales tax return worksheet: taxable, exempt and non-taxable sales, tax per agency, and what is due.*
 
-![Open invoices list with overdue invoices marked](docs/screenshots/invoices.png)
+![Open invoices list with overdue invoices marked](docs/screenshots/invoices-light.png)
 *Invoices: who owes you, what is overdue, and what is still open.*
 
-![Bank transactions waiting for review with a category chooser](docs/screenshots/bank-transactions.png)
+![Bank transactions waiting for review with a category chooser](docs/screenshots/bank-transactions-night.png)
 *Bank transactions: import a statement, and Ledjoro offers a category for each line.*
 
-![Profit and Loss report with income, cost of goods sold and expenses](docs/screenshots/profit-and-loss.png)
+![Profit and Loss report with income, cost of goods sold and expenses](docs/screenshots/profit-and-loss-dark.png)
 *Reports: profit and loss, balance sheet, trial balance, aging, general ledger and cash forecast.*
 
 ## Converting from QuickBooks
@@ -124,10 +124,10 @@ Recommended migration path from QuickBooks:
 Not supported on purpose: proprietary `.QBW` / `.QBB` company files (undocumented; reverse engineering them is a legal risk — see LEGAL.md).
 Tax IDs/SSNs are never imported (data minimisation). Format details: [docs/FORMATS.md](docs/FORMATS.md). Sample files in `samples/` are synthetic.
 
-![QuickBooks Sync page explaining how to connect to QuickBooks Desktop](docs/screenshots/quickbooks-sync.png)
+![QuickBooks Sync page explaining how to connect to QuickBooks Desktop](docs/screenshots/quickbooks-sync-light.png)
 *QuickBooks Sync: copy your QuickBooks Desktop data across, read-only, after a preview.*
 
-![A balance sheet in Ledjoro's Night theme](docs/screenshots/night-theme-balance-sheet.png)
+![A balance sheet in Ledjoro's Night theme](docs/screenshots/balance-sheet-night.png)
 *A balance sheet in the Night theme. Light and Dark are there too.*
 
 ## For developers: building from source
