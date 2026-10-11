@@ -79,7 +79,7 @@ namespace Ledjoro
                 await form.GoAsync("#/about"); await Drive.Settle(500);
                 var ab = Drive.Find<AboutScreen>(form.Content);
                 check(ab != null && Drive.All<Lbl>(ab).Any(l => l.Text == "Version " + AboutScreen.Version), "the About page shows the version");
-                var excerpt = Drive.All<Lbl>(ab).FirstOrDefault(l => l.Text.Contains("Open-source") && l.Text.Length > 300);
+                var excerpt = Drive.All<Lbl>(ab).FirstOrDefault(l => l.Text.Contains("native Windows program") && l.Text.Length > 300);
                 check(excerpt != null && !excerpt.Text.Contains("**") && !excerpt.Text.Contains("](") && !excerpt.Text.Contains("`"), "the About page shows a readable excerpt of the README (no markdown marks)");
                 check(excerpt != null && excerpt.Text.EndsWith("\u2026") && Drive.All<Lbl>(ab).Any(l => l.Text == "Show the whole README"), "the excerpt is cut at a paragraph and the whole README is one click away");
                 check(Drive.Button(ab, "Check for Updates") != null, "the About page has a Check for Updates button");

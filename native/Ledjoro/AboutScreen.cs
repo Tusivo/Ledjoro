@@ -48,7 +48,7 @@ namespace Ledjoro
             using (var s = typeof(AboutScreen).Assembly.GetManifestResourceStream("readme.md"))
             {
                 if (s == null) return "";
-                using (var r = new StreamReader(s, Encoding.UTF8)) return Plain(r.ReadToEnd());
+                using (var r = new StreamReader(s, Encoding.UTF8)) { string md = r.ReadToEnd(); int k = md.IndexOf("## More about how it works"); return Plain(k > 0 ? md.Substring(k) : md); }   // the download steps are for people who do not have the program yet
             }
         }
 

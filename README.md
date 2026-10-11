@@ -1,18 +1,32 @@
 # Ledjoro
 
-Open-source small-business accounting for Windows, with **built-in converters for common QuickBooks interchange formats**.
-One native program (no browser, no Chromium, no Electron, no web view), your data in a local SQLite file, zero npm dependencies. Original design and code; not affiliated with or endorsed by Intuit.
+**Free, private accounting for small businesses on Windows.** Invoices, bills, bank reconciliation and reports, with your books kept in a file on your own computer. No account to create, no subscription, nothing sent anywhere.
 
-> **Status: v0.9.0-beta.1 — a working beta, not yet audited.** Have an accountant sanity-check your books and an independent
-> security review done before relying on it for real finances. See [SECURITY.md](SECURITY.md) and [LEGAL.md](LEGAL.md).
+### [Download Ledjoro for Windows](https://github.com/Tusivo/Ledjoro/releases)
 
-## Quick start (Windows 10/11)
+On that page, open the newest release and download **Ledjoro.exe** under **Assets**. There is no installer: you just double-click the file.
 
-Double-click **`Ledjoro.exe`**. That is the whole install: one file, nothing else to set up.
+> **This is a beta (v0.9.0-beta.1).** It works and has been tested a great deal, but it has not yet been used on many real companies or had an independent security review. Keep your own backups, and have an accountant look over your books before relying on them. See [SECURITY.md](SECURITY.md) and [LEGAL.md](LEGAL.md).
+
+## Get started in three steps
+
+1. **Download** `Ledjoro.exe` from the [releases page](https://github.com/Tusivo/Ledjoro/releases) and save it in a folder you will remember (for example `C:\Ledjoro`). Ledjoro keeps your books in a folder called `Ledjoro-Data` right beside it, so choose somewhere you can write to, not Program Files.
+2. **Double-click it.** Windows may say "Windows protected your PC" because the program is not code-signed yet. Click **More info**, then **Run anyway**.
+3. **Create your administrator account.** Then print or save the sign-in sheet it shows: it holds your password and a one-time recovery key, and it is shown only once.
+
+Coming from QuickBooks? Ledjoro can import your lists and transactions (see **Converting from QuickBooks** below) and can pull data straight from QuickBooks Desktop (**QuickBooks Sync**). To update later, open **About** and click **Check for Updates**.
+
+Questions or problems? See [Support the project](#support-the-project) at the end, or use **About, Support** in the program.
+
+## More about how it works
+
+Ledjoro is one native Windows program (no browser, no Chromium, no Electron, no web view) with your data in a local SQLite file and zero npm dependencies. Original design and code; not affiliated with or endorsed by Intuit.
+
+### Good to know
 
 - **First run:** the app opens on a setup screen with the one-time setup token already filled in. Create the administrator, then **print or vault the sign-in sheet** (it shows your password and a one-time recovery key, in red, once).
 - **Everything stays beside the program.** Ledjoro writes only to a folder called `Ledjoro-Data` next to `Ledjoro.exe` (the books, settings, logs, and the unpacked engine). Each additional company lives in its own subfolder, `Ledjoro-Data\Companies\<name>`. Nothing goes to your user profile or the registry. To move to another computer, **close Ledjoro and copy `Ledjoro.exe` together with `Ledjoro-Data`** (copy, don't Cut: the folder's permissions belong to your Windows user). Back up and restore from *Settings - Data & backup* (encrypted; one button each).
-- **Private by construction:** nothing listens on your network, and there is no telemetry. The only outbound connection is the **Check for Updates** button on the About page, which talks to this project's GitHub releases when you click it (never automatically). The Support and Buy Me a Coffee buttons only open a web page in your browser when clicked. Updates are verified the download against GitHub's published SHA-256 and keeps your old `Ledjoro.exe` as a backup next to the new one. See [SECURITY.md](SECURITY.md) for how the app and its hidden engine talk to each other.
+- **Private by construction:** nothing listens on your network, and there is no telemetry. The only outbound connection is the **Check for Updates** button on the About page, which talks to this project's GitHub releases when you click it (never automatically). The Support and Buy Me a Coffee buttons only open a web page in your browser when clicked. Updates are checked against GitHub's published SHA-256 before they are installed, and your old `Ledjoro.exe` is kept as a backup next to the new one. See [SECURITY.md](SECURITY.md) for how the app and its hidden engine talk to each other.
 - **The books file is protected.** While Ledjoro runs it holds the file exclusively (other programs get "database is locked"), the folder's permissions are limited to your Windows user and the system, a read-only flag on the file is cleared automatically (it used to make every sign-in fail with a vague error), and at every start the file is checked for edits made outside Ledjoro, which are reported on screen. See [SECURITY.md](SECURITY.md) for what this can and cannot stop.
 - **One copy at a time:** launching it again brings the running window forward.
 - **Unsigned:** the exe is not code-signed, so Windows SmartScreen may warn the first time ("More info" then "Run anyway"). Compare `Ledjoro.exe.sha256` with the file, and sign it (Authenticode certificate) if you distribute it to others.
@@ -31,36 +45,11 @@ Double-click **`Ledjoro.exe`**. That is the whole install: one file, nothing els
 - **The engine** (ledger, SQLite database, importers, reports) is the same code the tests exercise. It runs as a hidden background process embedded in the exe (Node.js single-executable app), unpacks to `Ledjoro-Data\engine\` on first launch, has its SHA-256 verified on every start, and stops when the app closes. Node.js is a JavaScript runtime, not a browser.
 - The only build-time tool that is not part of this repository is `postject` (pinned, not shipped).
 
-### Building from source
-
-Needs Windows, Node.js 24+ and the .NET SDK.
-
-```bash
-npm run build          # -> dist/Ledjoro.exe (~90 MB) + dist/Ledjoro.exe.sha256
-npm test               # 55 engine tests
-npm run build:engine   # just the engine exe (dist/Ledjoro-Engine.exe)
-```
-The theme is **Light** until you choose another; the choice is saved in `Ledjoro-Data\shell.json`, and text added to that file by hand does not reset it.
-
-QR codes are made and read by Ledjoro itself (`native/Ledjoro/Qr.cs`, no library). `npm run test:qr` tests the generator and reader (repair, rotation, tilt, blur, noise, smudges), and `scripts/qr-cross-check.py` checks them against independent programs (segno makes codes Ledjoro must read; zxing-cpp must read Ledjoro's codes). Camera scanning needs the Windows SDK at build time (it is skipped without it) and the Windows privacy setting "Let desktop apps access your camera".
-
-The app has its own self-test: `Ledjoro.exe --selftest <folder>` drives every screen and dialog, saves screenshots and writes `result.txt`. Run it against a throwaway data folder (`LEDJORO_DATA`), never your real books. For development, `LEDJORO_ENGINE_JS=src/engine.js` makes the app run the engine from source with `node`.
-
-## Sample data
-
-```bash
-npm run demo:seed              # 5 years of history (Oct 2021 - Sep 2026)
-node scripts/make-demo-data.js --years 1   # or 1-10 years
-```
-Generates a fully **synthetic** company, *Birchwood Design Studio LLC* (phones are in the fictional 603-555-01xx range), with a believable trajectory: a thin first year, steady growth to a ~30% margin, customers who join and leave, price and payroll increases, annual equipment purchases with depreciation, a loan that amortizes, seasonal dips, slow payers, quarterly owner distributions, and a recent statement waiting for review. About 1,100 invoices/bills and 1,100 payments over five years. It writes:
-- `samples/demo/` - QuickBooks-style files to test the converters (`transactions.iif`, a `.qbo` bank statement, chart/customer/vendor/item CSVs, opening and expected trial balances) - see its `README.md` for the import order;
-- `demo-data/ledjoro.db` - a ready-made database with **no users**. Copy it to its own folder, set `LEDJORO_DATA` to that folder before launching `Ledjoro.exe`, then create your own administrator on first launch.
-
-The generator is seeded (reproducible) and self-checking: it loads the same activity natively *and* through the IIF converter and fails unless both trial balances match to the cent.
-
 ## Themes
 
 The **Theme** drop-down in the top-right corner (also on the sign-in screen) offers **Light** (the default), **Dark** (black with gray and white text) and **Night** (deep navy with soft blue, mint and sand accents, inspired by the Night Owl editor theme). The window title bar and scroll bars follow the choice, and it is remembered in `shell.json` in your data folder.
+
+The theme is **Light** until you choose another; the choice is saved in `Ledjoro-Data\shell.json`, and text added to that file by hand does not reset it.
 
 ## What it does today
 
@@ -115,6 +104,32 @@ Recommended migration path from QuickBooks:
 
 Not supported on purpose: proprietary `.QBW` / `.QBB` company files (undocumented; reverse engineering them is a legal risk — see LEGAL.md).
 Tax IDs/SSNs are never imported (data minimisation). Format details: [docs/FORMATS.md](docs/FORMATS.md). Sample files in `samples/` are synthetic.
+
+## For developers: building from source
+
+You do not need this to use Ledjoro; download the program from the [releases page](https://github.com/Tusivo/Ledjoro/releases). To build it yourself you need Windows, Node.js 24+ and the .NET SDK.
+
+```bash
+npm run build          # -> dist/Ledjoro.exe (~90 MB) + dist/Ledjoro.exe.sha256
+npm test               # the engine tests
+npm run build:engine   # just the engine exe (dist/Ledjoro-Engine.exe)
+```
+
+QR codes are made and read by Ledjoro itself (`native/Ledjoro/Qr.cs`, no library). `npm run test:qr` tests the generator and reader (repair, rotation, tilt, blur, noise, smudges), and `scripts/qr-cross-check.py` checks them against independent programs (segno makes codes Ledjoro must read; zxing-cpp must read Ledjoro's codes). Camera scanning needs the Windows SDK at build time (it is skipped without it) and the Windows privacy setting "Let desktop apps access your camera".
+
+The app has its own self-test: `Ledjoro.exe --selftest <folder>` drives every screen and dialog, saves screenshots and writes `result.txt`. Run it against a throwaway data folder (`LEDJORO_DATA`), never your real books. For development, `LEDJORO_ENGINE_JS=src/engine.js` makes the app run the engine from source with `node`.
+
+## For developers: sample data
+
+```bash
+npm run demo:seed              # 5 years of history (Oct 2021 - Sep 2026)
+node scripts/make-demo-data.js --years 1   # or 1-10 years
+```
+Generates a fully **synthetic** company, *Birchwood Design Studio LLC* (phones are in the fictional 603-555-01xx range), with a believable trajectory: a thin first year, steady growth to a ~30% margin, customers who join and leave, price and payroll increases, annual equipment purchases with depreciation, a loan that amortizes, seasonal dips, slow payers, quarterly owner distributions, and a recent statement waiting for review. About 1,100 invoices/bills and 1,100 payments over five years. It writes:
+- `samples/demo/` - QuickBooks-style files to test the converters (`transactions.iif`, a `.qbo` bank statement, chart/customer/vendor/item CSVs, opening and expected trial balances) - see its `README.md` for the import order;
+- `demo-data/ledjoro.db` - a ready-made database with **no users**. Copy it to its own folder, set `LEDJORO_DATA` to that folder before launching `Ledjoro.exe`, then create your own administrator on first launch.
+
+The generator is seeded (reproducible) and self-checking: it loads the same activity natively *and* through the IIF converter and fails unless both trial balances match to the cent.
 
 ## Configuration (environment variables)
 
