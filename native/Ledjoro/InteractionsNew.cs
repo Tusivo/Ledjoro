@@ -44,6 +44,100 @@ namespace Ledjoro
                 await shot("49-import-converter-link"); string was0 = Theme.Name; foreach (var tn in new[] { "light", "night", "dark" }) { Theme.Use(tn); await Drive.Settle(400); await shot("49-import-converter-" + tn); } Theme.Use(was0); await Drive.Settle(300);
             }
 
+            // ---- Sales Tax ------------------------------------------------------------------------------------------------
+            {
+                await form.GoAsync("#/salestax"); await Drive.Settle(500);
+                var st0 = Drive.Find<SalesTaxScreen>(form.Content);
+                check(st0 != null && Drive.Button(st0, "New Tax Rate") != null && Drive.Button(st0, "New Combined Rate") != null, "the Sales Tax page opens with New Tax Rate and New Combined Rate");
+                check(Drive.All<Lbl>(st0).Any(l => l.Text.StartsWith("Charging sales tax")), "with no rates yet the page explains how sales tax works");
+                await shot("70-salestax-empty");
+                Drive.Button(st0, "New Tax Rate").Post(); var rd = await Drive.WaitDialog(); check(rd != null, "New Tax Rate opens a dialog");
+                if (rd != null)
+                {
+                    Drive.Find<Input>(rd, i => i.Cue == "State sales tax").Text = "State"; Drive.Find<Input>(rd, i => i.Cue == "6.25").Text = "4"; Drive.Find<Input>(rd, i => i.Cue == "State Department of Revenue").Text = "State Revenue";
+                    Drive.Button(rd, "Save").PerformClick(); await Drive.WaitClosed(rd);
+                }
+                await api.Post("api/salestax/rates", Json.O("name", "County", "rate_pct", "2.5", "agency", "County Treasurer"));
+                await form.GoAsync("#/salestax"); await Drive.Settle(400);
+                var st1 = Drive.Find<SalesTaxScreen>(form.Content);
+                Drive.Button(st1, "New Combined Rate").Post(); var gd = await Drive.WaitDialog();
+                check(gd != null && Drive.All<Check>(gd).Count(c => c.Text.StartsWith("State") || c.Text.StartsWith("County")) == 2, "a combined rate offers the single rates to tick");
+                if (gd != null)
+                {
+                    Drive.Find<Input>(gd, i => i.Cue.StartsWith("Springfield")).Text = "Springfield";
+                    foreach (var c in Drive.All<Check>(gd).Where(c => c.Text.StartsWith("State") || c.Text.StartsWith("County"))) c.Checked = true;
+                    Drive.All<Check>(gd).First(c => c.Text.StartsWith("Use this rate")).Checked = true;
+                    Drive.Button(gd, "Save").PerformClick(); await Drive.WaitClosed(gd);
+                }
+                var rates = await api.Get("api/salestax/rates"); var combo = rates["rates"].Items.FirstOrDefault(r => r["name"].Str == "Springfield");
+                check(rates["rates"].Count == 3 && combo != null && combo["rate_milli"].Long == 6500 && rates["default_id"].Long == combo["id"].Long, "the rates were saved: State 4%, County 2.5% and Springfield 6.5% as the default");
+                await form.GoAsync("#/salestax"); await Drive.Settle(500);
+                check(Drive.All<Grid>(form.Content).Any(g => g.Rows.Count == 3), "the rates are listed");
+                await shot("71-salestax-rates");
+
+                // customers: one exempt
+                await api.Post("api/contacts", Json.O("kind", "customer", "name", "Tax Test Buyer"));
+                await form.GoAsync("#/customers"); await Drive.Settle(400);
+                Drive.Button(form.Content, "New Customer").Post(); var cd = await Drive.WaitDialog();
+                check(cd != null && Drive.All<Check>(cd).Any(c => c.Text.StartsWith("Tax-exempt customer")), "the customer window has a tax-exempt box");
+                if (cd != null)
+                {
+                    Drive.Find<Input>(cd, i => i.Cue.StartsWith("Business or display name")).Text = "Exempt School";
+                    Drive.All<Check>(cd).First(c => c.Text.StartsWith("Tax-exempt customer")).Checked = true; Drive.Find<Input>(cd, i => i.Cue.StartsWith("Exemption certificate")).Text = "ST-4411";
+                    await shot("72-customer-tax-exempt"); Drive.Button(cd, "Save").PerformClick(); await Drive.WaitClosed(cd);
+                }
+                var cl = await api.Get("api/contacts?kind=customer"); var buyer = cl.Items.First(c => c["name"].Str == "Tax Test Buyer"); var school = cl.Items.First(c => c["name"].Str == "Exempt School");
+                check(school["tax_exempt"].Long == 1 && school["tax_exempt_note"].Str == "ST-4411", "the exempt customer was saved with its certificate note");
+
+                // the invoice form: tax rate, taxable ticks, live totals
+                await form.GoAsync("#/invoices/new"); await Drive.Settle(600);
+                var combos = Drive.All<Combo>(form.Content).ToList(); var custBox = combos[0]; var taxBox = combos.First(c => c.Items.Any(i => i.Value == "No sales tax"));
+                check(taxBox.Value == combo["id"].Str, "the default tax rate is chosen on a new invoice");
+                custBox.Value = buyer["id"].Str; await Drive.Settle(150);
+                Drive.Field(form.Content, "Description").Text = "Taxed goods"; Drive.Find<Input>(form.Content, i => i.Cue == "0.00").Text = "200.00"; await Drive.Settle(200);
+                check(Drive.All<Lbl>(form.Content).Any(l => l.Text == "$13.00") && Drive.All<Lbl>(form.Content).Any(l => l.Text == "$213.00"), "the form shows tax of $13.00 (6.5% of $200.00) and a total of $213.00");
+                var tick = Drive.All<Check>(form.Content).First(c => c.AccessibleName == "Charge sales tax on this line"); tick.Checked = false; await Drive.Settle(150);
+                check(Drive.All<Lbl>(form.Content).Count(l => l.Text == "$200.00") >= 1 && Drive.All<Lbl>(form.Content).Count(l => l.Text == "$0.00") >= 1, "unticking Tax on the line takes the tax off");
+                tick.Checked = true; await Drive.Settle(150); await shot("73-invoice-with-tax");
+                custBox.Value = school["id"].Str; await Drive.Settle(200);
+                check(taxBox.Value == "" && Drive.All<Lbl>(form.Content).Any(l => l.Text.StartsWith("This customer is tax-exempt")), "choosing a tax-exempt customer removes the tax and says why");
+                custBox.Value = buyer["id"].Str; await Drive.Settle(200);
+                Drive.Button(form.Content, "Save").PerformClick();
+                bool savedTax = await Drive.Until(() => form.CurrentHash.StartsWith("#/document/")); check(savedTax, "the taxed invoice saves");
+                await Drive.Settle(600);
+                var taxed = (await api.Get("api/documents?kind=invoice")).Items.OrderByDescending(d => d["id"].Long).First();
+                check(taxed["total_cents"].Long == 21300 && taxed["tax_cents"].Long == 1300, "the invoice was saved with $13.00 of sales tax");
+                check(Drive.All<Grid>(form.Content).Any(g => g.Rows.Cast<DataGridViewRow>().Any(r => r.Cells[0].Value != null && r.Cells[0].Value.ToString().StartsWith("Sales tax: County"))), "the invoice shows each tax line");
+                await shot("74-invoice-detail-tax");
+                await api.Post("api/documents", Json.O("kind", "invoice", "contact_id", school["id"].Long, "doc_date", Fmt.Today(), "tax_rate_id", combo["id"].Long,
+                    "lines", new[] { Json.O("description", "Supplies", "qty_milli", 1000, "unit_price_cents", 50000, "account_id", (await Lists.Accounts()).Items.First(a => a["name"].Str == "Sales")["id"].Long, "taxable", true) }));
+
+                // the worksheet
+                await form.GoAsync("#/salestax/worksheet"); await Drive.Settle(700);
+                var ws = Drive.Find<SalesTaxScreen>(form.Content);
+                var pre = Drive.All<Combo>(ws).First(c => c.Items.Any(i => i.Key == "last-quarter")); pre.Value = "this-year"; await Drive.Settle(900);
+                check(Drive.All<Lbl>(ws).Any(l => l.Text.StartsWith("Sales Tax Return Worksheet")), "the Return Worksheet opens with its period");
+                check(Drive.All<Grid>(ws).Any(g => g.Rows.Cast<DataGridViewRow>().Any(r => r.Cells[0].Value != null && r.Cells[0].Value.ToString() == "Exempt sales (to tax-exempt customers)" && r.Cells[1].Value.ToString() == "$500.00")), "exempt sales to the school ($500.00) are listed");
+                check(Drive.All<Grid>(ws).Any(g => g.Rows.Cast<DataGridViewRow>().Any(r => r.Cells[0].Value != null && r.Cells[0].Value.ToString() == "Tax due for this period" && r.Cells[1].Value.ToString() == "$13.00")), "the worksheet finds $13.00 of tax due");
+                check(Drive.Button(ws, "Print") != null && Drive.Button(ws, "Record a Payment to the Agency") != null, "the worksheet can be printed and a payment recorded from it");
+                await shot("75-salestax-worksheet");
+                Drive.Button(ws, "Record a Payment to the Agency").Post(); var pd = await Drive.WaitDialog(); check(pd != null, "Record a Payment opens a dialog");
+                if (pd != null)
+                {
+                    var banks = (await Lists.Accounts()).Items.First(a => a["subtype"].Str == "bank");
+                    Drive.All<Combo>(pd).First(c => c.Items.Any(i => i.Key == banks["id"].Str)).Value = banks["id"].Str; await shot("76-salestax-payment");
+                    Drive.Button(pd, "Save Payment").PerformClick(); await Drive.WaitClosed(pd);
+                }
+                await Drive.Settle(500);
+                var pays = await api.Get("api/salestax/payments");
+                check(pays.Count == 1 && pays[0]["amount_cents"].Long == 1300, "the payment to the agency was recorded for the tax due");
+                check(form.CurrentHash == "#/salestax/payments" && Drive.All<Grid>(form.Content).Any(g => g.Rows.Count == 1), "the Payments tab lists it");
+                await shot("77-salestax-payments");
+                check(Drive.All<TabBar>(form.Content).Any(tb => tb.Items.Any(i => i.Value == "Return Worksheet")), "the Sales Tax page has the Tax Rates, Return Worksheet and Payments tabs");
+                await api.Patch("api/salestax/rates/" + combo["id"].Str, Json.O("is_default", false)); Lists.Bust();
+                await form.GoAsync("#/dashboard"); await Drive.Settle(300);
+            }
+
             // ---- README pictures (only when LEDJORO_README_SHOTS=1): clean scenes of the demo company, window only, saved as readme-*.png -----
             if (Environment.GetEnvironmentVariable("LEDJORO_README_SHOTS") == "1")
             {
@@ -53,6 +147,8 @@ namespace Ledjoro
                 await form.GoAsync("#/invoices"); await Drive.Settle(900); await shot("readme-invoices");
                 await form.GoAsync("#/reports/profit-loss"); await Drive.Settle(900); await shot("readme-profit-loss");
                 await form.GoAsync("#/banking"); await Drive.Settle(900); await shot("readme-banking");
+                await form.GoAsync("#/salestax/worksheet"); await Drive.Settle(700); { var wsx = Drive.Find<SalesTaxScreen>(form.Content); var px = Drive.All<Combo>(wsx).First(c => c.Items.Any(i => i.Key == "last-quarter")); px.Value = "this-year"; await Drive.Settle(1000); } await shot("readme-sales-tax-worksheet");
+                await form.GoAsync("#/invoices/new"); await Drive.Settle(700); { var cx = Drive.All<Combo>(form.Content).First(); var cust = (await api.Get("api/contacts?kind=customer")).Items.First(c => c["name"].Str == "Tax Test Buyer"); cx.Value = cust["id"].Str; var spr = (await api.Get("api/salestax/rates"))["rates"].Items.First(r => r["name"].Str == "Springfield"); Drive.All<Combo>(form.Content).First(c => c.Items.Any(i => i.Value == "No sales tax")).Value = spr["id"].Str; Drive.Field(form.Content, "Description").Text = "Custom website design"; Drive.Find<Input>(form.Content, i => i.Cue == "0.00").Text = "1200.00"; await Drive.Settle(400); } await shot("readme-invoice-with-tax");
                 await form.GoAsync("#/quickbooks"); await Drive.Settle(7000); await shot("readme-quickbooks");
                 Theme.Use("night"); await Drive.Settle(500);
                 await form.GoAsync("#/dashboard"); await Drive.Settle(1200); await shot("readme-dashboard-night");
@@ -63,7 +159,7 @@ namespace Ledjoro
             // ---- About ---------------------------------------------------------------------------------------------------
             {
                 check(System.Text.RegularExpressions.Regex.IsMatch(AboutScreen.Version, @"^\d+\.\d+\.\d+(-[a-z]+\.\d+)?$"), "the program knows its version number (" + AboutScreen.Version + ")");
-                check(AboutScreen.Version == "0.9.0-beta.1", "the version is 0.9.0-beta.1");
+                check(AboutScreen.Version == "0.9.1-beta.1", "the version is 0.9.1-beta.1");
                 check(Updater.Compare("0.9.0-beta.1", "v0.9.0-beta.2") < 0 && Updater.Compare("0.9.0-beta.2", "0.9.0") < 0 && Updater.Compare("0.9.0", "0.10.0") < 0 && Updater.Compare("v1.0.0", "1.0.0") == 0 && Updater.Compare("0.9.0-beta.10", "0.9.0-beta.9") > 0, "version numbers are put in the right order");
                 {
                     string dl = "https://github.com/" + Updater.Repo + "/releases/download/";

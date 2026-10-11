@@ -28,7 +28,7 @@ namespace Ledjoro
         static readonly Dictionary<string, int> Tiles = new Dictionary<string, int>
         {
             { "dashboard", 0 },
-            { "invoices", 1 }, { "customers", 1 },
+            { "invoices", 1 }, { "customers", 1 }, { "salestax", 1 },
             { "bills", 2 }, { "vendors", 2 },
             { "banking", 3 }, { "reconcile", 3 },
             { "accounts", 4 }, { "journal", 4 }, { "assets", 4 }, { "reports", 4 }, { "health", 4 },
@@ -104,6 +104,8 @@ namespace Ledjoro
                     case "quickbooks":
                         g.DrawLine(pen, P(0.0f, 0.28f), P(1.0f, 0.28f)); g.DrawLines(pen, new[] { P(0.72f, 0.0f), P(1.0f, 0.28f), P(0.72f, 0.56f) });
                         g.DrawLine(pen, P(1.0f, 0.74f), P(0.0f, 0.74f)); g.DrawLines(pen, new[] { P(0.28f, 0.46f), P(0.0f, 0.74f), P(0.28f, 1.0f) }); break;
+                    case "salestax":
+                        g.DrawLine(pen, P(0.86f, 0.04f), P(0.14f, 0.96f)); g.DrawEllipse(pen, R(0.0f, 0.0f, 0.4f, 0.4f)); g.DrawEllipse(pen, R(0.6f, 0.6f, 0.4f, 0.4f)); break;
                     case "support":
                         using (var heart = new GraphicsPath())
                         {

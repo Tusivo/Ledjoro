@@ -15,7 +15,7 @@ namespace Ledjoro
             new[] { "Bills", "#/bills" }, new[] { "New Bill", "#/bills/new" }, new[] { "Vendors", "#/vendors" }, new[] { "Bank Transactions", "#/banking" },
             new[] { "Bank rules", "#/banking/rules" }, new[] { "Reconcile a statement", "#/reconcile" }, new[] { "Chart of Accounts", "#/accounts" }, new[] { "Journal", "#/journal" },
             new[] { "New Journal Entry", "#/journal/new" }, new[] { "Fixed Assets", "#/assets" }, new[] { "Reports", "#/reports" }, new[] { "Books Health", "#/health" },
-            new[] { "Import & Convert", "#/import" }, new[] { "QuickBooks Sync (Web Connector)", "#/quickbooks" }, new[] { "Settings", "#/settings" }, new[] { "About Ledjoro (version)", "#/about" }, new[] { "Backups (Data & Backup)", "#/settings/data" },
+            new[] { "Sales Tax (rates, return worksheet, payments)", "#/salestax" }, new[] { "Sales Tax Return Worksheet", "#/salestax/worksheet" }, new[] { "Import & Convert", "#/import" }, new[] { "QuickBooks Sync (Web Connector)", "#/quickbooks" }, new[] { "Settings", "#/settings" }, new[] { "About Ledjoro (version)", "#/about" }, new[] { "Backups (Data & Backup)", "#/settings/data" },
         };
 
         public readonly Dlg Dialog; public readonly Input Box; public readonly Grid Results; readonly System.Windows.Forms.Timer delay = new System.Windows.Forms.Timer { Interval = 200 }; int token;

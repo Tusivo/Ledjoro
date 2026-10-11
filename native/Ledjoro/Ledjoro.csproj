@@ -8,10 +8,10 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>Ledjoro</AssemblyName>
     <RootNamespace>Ledjoro</RootNamespace>
-    <Version>0.9.0-beta.1</Version>
-    <AssemblyVersion>0.9.0.0</AssemblyVersion>
-    <FileVersion>0.9.0.1</FileVersion>
-    <InformationalVersion>0.9.0-beta.1</InformationalVersion>
+    <Version>0.9.1-beta.1</Version>
+    <AssemblyVersion>0.9.1.0</AssemblyVersion>
+    <FileVersion>0.9.1.1</FileVersion>
+    <InformationalVersion>0.9.1-beta.1</InformationalVersion>
     <Product>Ledjoro</Product>
   </PropertyGroup>
   <!-- The camera (for scanning the recovery QR code) uses Windows' own camera API. It is compiled in only when the Windows SDK metadata file is found;

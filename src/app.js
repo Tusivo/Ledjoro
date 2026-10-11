@@ -8,6 +8,7 @@ const A = require('./auth');
 const { audit, verifyAudit } = require('./audit');
 const D = require('./domain');
 const R = require('./reports');
+const ST = require('./salestax');
 const C = require('./convert');
 const { reverseEntry, checkLedgerIntegrity } = require('./ledger');
 const Backup = require('./backup');
@@ -275,6 +276,14 @@ function createApp(db, cfg) {
   });
   route('GET', '/api/items', 'view', () => D.listItems(db));
   route('POST', '/api/items', 'view', ({ b, ctx, session }) => { A.requirePerm(session, 'sales.write'); return { id: D.createItem(db, ctx, b) }; });
+  // ---------- sales tax ----------
+  route('GET', '/api/salestax/rates', 'view', () => ST.listRates(db));
+  route('POST', '/api/salestax/rates', 'sales.write', ({ b, ctx }) => ({ id: ST.createRate(db, ctx, b) }));
+  route('PATCH', '/api/salestax/rates/:id', 'sales.write', ({ params, b, ctx }) => (ST.updateRate(db, ctx, id(params.id), b), { ok: true }));
+  route('GET', '/api/salestax/worksheet', 'view', ({ query }) => ST.worksheet(db, query));
+  route('GET', '/api/salestax/payments', 'view', () => ST.listRemittances(db));
+  route('POST', '/api/salestax/payments', 'accounting.write', ({ b, ctx }) => ({ id: ST.createRemittance(db, ctx, b) }));
+  route('POST', '/api/salestax/payments/:id/void', 'accounting.write', ({ params, ctx }) => (ST.voidRemittance(db, ctx, id(params.id)), { ok: true }));
   route('GET', '/api/documents', 'view', ({ query }) => D.listDocuments(db, U.vEnum(query.kind, 'kind', ['invoice', 'bill']), query.status ? U.vEnum(query.status, 'status', ['open', 'paid', 'void']) : null));
   route('GET', '/api/documents/:id', 'view', ({ params }) => D.getDocument(db, id(params.id)));
   route('POST', '/api/documents', 'view', ({ b, ctx, session }) => {

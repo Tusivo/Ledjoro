@@ -3,6 +3,7 @@ const { tx, getSetting, setSetting, ACCOUNT_TYPES, SUBTYPES } = require('./db');
 const { bad, HttpError, vStr, vInt, vDate, vEnum, vBool, vObj, vArr, vPhone, addDays, today } = require('./util');
 const { postEntry, reverseEntry, systemAccount } = require('./ledger');
 const { audit } = require('./audit');
+const ST = require('./salestax');
 
 const TYPE_FOR_SUBTYPE = {
   bank: 'asset', ar: 'asset', other_current_asset: 'asset', fixed_asset: 'asset', other_asset: 'asset',
@@ -71,6 +72,8 @@ function contactFields(b) {
     addr_street: vStr(b.addr_street, 'street address', { max: 120 }), addr_street2: vStr(b.addr_street2, 'apartment or suite', { max: 120 }), addr_city: vStr(b.addr_city, 'city', { max: 80 }),
     addr_state: vStr(b.addr_state, 'state', { max: 2 }).toUpperCase(), addr_zip: vStr(b.addr_zip, 'ZIP code', { max: 10 }),
     terms_days: vInt(b.terms_days ?? 30, 'terms_days', { min: 0, max: 365 }), is_1099: vBool(b.is_1099),
+    tax_exempt: vBool(b.tax_exempt), tax_exempt_note: vStr(b.tax_exempt_note, 'exemption note', { max: 120 }),
+    tax_rate_id: b.tax_rate_id ? vInt(b.tax_rate_id, 'tax rate') : null,
   };
   if (f.addr_state && !US_STATES.has(f.addr_state)) throw bad(`"${f.addr_state}" is not a US state abbreviation. Use the two letters the post office uses, such as NH, CA or TX.`);
   if (f.addr_zip && !/^\d{5}(-\d{4})?$/.test(f.addr_zip)) throw bad('The ZIP code must be 5 digits (such as 03301) or 5+4 digits (such as 03301-1234).');
@@ -90,8 +93,8 @@ function createContact(db, ctx, b) {
   const f = contactFields(b);
   const name = contactName(b, f);
   try {
-    const r = db.prepare('INSERT INTO contacts(kind,name,email,phone,phone2,address,first_name,middle_name,last_name,addr_street,addr_street2,addr_city,addr_state,addr_zip,terms_days,is_1099,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(kind, name, f.email, f.phone, f.phone2, f.address, f.first_name, f.middle_name, f.last_name, f.addr_street, f.addr_street2, f.addr_city, f.addr_state, f.addr_zip, f.terms_days, f.is_1099, Date.now());
+    const r = db.prepare('INSERT INTO contacts(kind,name,email,phone,phone2,address,first_name,middle_name,last_name,addr_street,addr_street2,addr_city,addr_state,addr_zip,terms_days,is_1099,tax_exempt,tax_exempt_note,tax_rate_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(kind, name, f.email, f.phone, f.phone2, f.address, f.first_name, f.middle_name, f.last_name, f.addr_street, f.addr_street2, f.addr_city, f.addr_state, f.addr_zip, f.terms_days, f.is_1099, f.tax_exempt, f.tax_exempt_note, f.tax_rate_id, Date.now());
     audit(db, ctx, 'contact.create', kind, r.lastInsertRowid, name);
     return Number(r.lastInsertRowid);
   } catch (e) {
@@ -109,7 +112,7 @@ function updateContact(db, ctx, id, b) {
   const name = b.name !== undefined || b.first_name !== undefined || b.last_name !== undefined ? contactName(merged, f) : c.name;
   const active = b.active !== undefined ? vBool(b.active) : c.active;
   try {
-    db.prepare('UPDATE contacts SET name=?,email=?,phone=?,phone2=?,address=?,first_name=?,middle_name=?,last_name=?,addr_street=?,addr_street2=?,addr_city=?,addr_state=?,addr_zip=?,terms_days=?,is_1099=?,active=? WHERE id=?').run(name, f.email, f.phone, f.phone2, f.address, f.first_name, f.middle_name, f.last_name, f.addr_street, f.addr_street2, f.addr_city, f.addr_state, f.addr_zip, f.terms_days, f.is_1099, active, id);
+    db.prepare('UPDATE contacts SET name=?,email=?,phone=?,phone2=?,address=?,first_name=?,middle_name=?,last_name=?,addr_street=?,addr_street2=?,addr_city=?,addr_state=?,addr_zip=?,terms_days=?,is_1099=?,tax_exempt=?,tax_exempt_note=?,tax_rate_id=?,active=? WHERE id=?').run(name, f.email, f.phone, f.phone2, f.address, f.first_name, f.middle_name, f.last_name, f.addr_street, f.addr_street2, f.addr_city, f.addr_state, f.addr_zip, f.terms_days, f.is_1099, f.tax_exempt, f.tax_exempt_note, f.tax_rate_id, active, id);
   } catch (e) {
     if (/UNIQUE/.test(e.message)) throw bad(`You already have a ${c.kind} called "${name}". Use a different name, or open the existing one.`);
     throw e;
@@ -126,8 +129,8 @@ function createItem(db, ctx, b) {
   const exp = vInt(b.expense_account_id, 'expense_account_id', { required: false });
   for (const a of [inc, exp]) if (a && !db.prepare('SELECT 1 FROM accounts WHERE id=?').get(a)) throw bad('One of the accounts chosen does not exist any more. Pick the account again from the list.');
   try {
-    const r = db.prepare('INSERT INTO items(name,kind,description,unit_price_cents,income_account_id,expense_account_id) VALUES (?,?,?,?,?,?)')
-      .run(name, kind, vStr(b.description, 'description', { max: 300 }), vInt(b.unit_price_cents ?? 0, 'unit_price_cents', { min: 0, max: 1e12 }), inc, exp);
+    const r = db.prepare('INSERT INTO items(name,kind,description,unit_price_cents,income_account_id,expense_account_id,taxable) VALUES (?,?,?,?,?,?,?)')
+      .run(name, kind, vStr(b.description, 'description', { max: 300 }), vInt(b.unit_price_cents ?? 0, 'unit_price_cents', { min: 0, max: 1e12 }), inc, exp, b.taxable === undefined ? 1 : vBool(b.taxable));
     audit(db, ctx, 'item.create', 'item', r.lastInsertRowid, name);
     return Number(r.lastInsertRowid);
   } catch (e) {
@@ -169,29 +172,39 @@ function createDocument(db, ctx, b) {
     const qty = vInt(l.qty_milli ?? 1000, `line ${i + 1} quantity`, { min: 1, max: 1e9 });
     const unit = vInt(l.unit_price_cents ?? item?.unit_price_cents ?? 0, `line ${i + 1} price`, { min: 0, max: 1e12 });
     const account = vInt(l.account_id ?? (kind === 'invoice' ? item?.income_account_id : item?.expense_account_id), `line ${i + 1} account`);
-    return { item_id: item?.id ?? null, description: vStr(l.description ?? item?.name, `line ${i + 1} description`, { max: 300 }), qty_milli: qty, unit_price_cents: unit, amount_cents: lineAmount(qty, unit), account_id: account };
+    const taxable = kind === 'invoice' ? (l.taxable === undefined ? (item ? item.taxable : 1) : vBool(l.taxable)) : 0;
+    return { item_id: item?.id ?? null, description: vStr(l.description ?? item?.name, `line ${i + 1} description`, { max: 300 }), qty_milli: qty, unit_price_cents: unit, amount_cents: lineAmount(qty, unit), account_id: account, taxable };
   });
-  const total = lines.reduce((s, l) => s + l.amount_cents, 0);
-  if (total <= 0) throw bad('The total is zero or less. Add at least one line with an amount above zero.');
+  const subtotal = lines.reduce((s, l) => s + l.amount_cents, 0);
+  if (subtotal <= 0) throw bad('The total is zero or less. Add at least one line with an amount above zero.');
   const control = systemAccount(db, kind === 'invoice' ? 'ar' : 'ap');
+  // sales tax (invoices only): a tax-exempt customer is never charged, whatever rate was chosen; otherwise the rate is applied to the lines marked taxable
+  const taxExempt = kind === 'invoice' && contact.tax_exempt ? 1 : 0;
+  const taxRateId = kind === 'invoice' && !taxExempt && b.tax_rate_id ? vInt(b.tax_rate_id, 'tax rate') : null;
+  const taxed = taxRateId ? ST.taxFor(db, taxRateId, lines.filter((l) => l.taxable).reduce((s, l) => s + l.amount_cents, 0)) : { parts: [], total_cents: 0 };
+  const taxCents = taxed.total_cents;
+  const total = subtotal + taxCents;
 
   return tx(db, () => {
     const number = vStr(b.number, 'number', { max: 30 }) || nextNumber(db, kind);
     const entryLines = kind === 'invoice'
-      ? [{ account_id: control, contact_id: contactId, debit_cents: total }, ...lines.map((l) => ({ account_id: l.account_id, contact_id: contactId, credit_cents: l.amount_cents, memo: l.description }))]
+      ? [{ account_id: control, contact_id: contactId, debit_cents: total }, ...lines.map((l) => ({ account_id: l.account_id, contact_id: contactId, credit_cents: l.amount_cents, memo: l.description })),
+        ...taxed.parts.filter((p) => p.tax_cents > 0).map((p) => ({ account_id: p.account_id, contact_id: contactId, credit_cents: p.tax_cents, memo: `Sales tax - ${p.name}` }))]
       : [...lines.map((l) => ({ account_id: l.account_id, contact_id: contactId, debit_cents: l.amount_cents, memo: l.description })), { account_id: control, contact_id: contactId, credit_cents: total }];
     const entryId = postEntry(db, { date, memo: `${kind === 'invoice' ? 'Invoice' : 'Bill'} ${number}`, ref: number, source_type: kind, user_id: ctx.user.id, lines: entryLines });
     let docId;
     try {
-      docId = Number(db.prepare('INSERT INTO documents(kind,number,contact_id,doc_date,due_date,memo,total_cents,status,entry_id,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
-        .run(kind, number, contactId, date, due, vStr(b.memo, 'memo', { max: 500 }), total, 'open', entryId, ctx.user.id, Date.now()).lastInsertRowid);
+      docId = Number(db.prepare('INSERT INTO documents(kind,number,contact_id,doc_date,due_date,memo,total_cents,status,entry_id,created_by,created_at,tax_rate_id,tax_cents,tax_exempt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        .run(kind, number, contactId, date, due, vStr(b.memo, 'memo', { max: 500 }), total, 'open', entryId, ctx.user.id, Date.now(), taxRateId, taxCents, taxExempt).lastInsertRowid);
     } catch (e) {
       if (/UNIQUE/.test(e.message)) throw bad(`The ${kind} number ${number} is already used by another ${kind}. Leave the number empty to let Ledjoro pick the next free one, or type a different number.`);
       throw e;
     }
-    const ins = db.prepare('INSERT INTO document_lines(document_id,item_id,description,qty_milli,unit_price_cents,amount_cents,account_id) VALUES (?,?,?,?,?,?,?)');
-    for (const l of lines) ins.run(docId, l.item_id, l.description, l.qty_milli, l.unit_price_cents, l.amount_cents, l.account_id);
-    audit(db, ctx, `${kind}.create`, kind, docId, `${number} total ${total}`);
+    const ins = db.prepare('INSERT INTO document_lines(document_id,item_id,description,qty_milli,unit_price_cents,amount_cents,account_id,taxable) VALUES (?,?,?,?,?,?,?,?)');
+    for (const l of lines) ins.run(docId, l.item_id, l.description, l.qty_milli, l.unit_price_cents, l.amount_cents, l.account_id, l.taxable);
+    const insTax = db.prepare('INSERT INTO document_tax(document_id,rate_id,rate_milli,taxable_cents,tax_cents) VALUES (?,?,?,?,?)');
+    for (const p of taxed.parts) insTax.run(docId, p.rate_id, p.rate_milli, p.taxable_cents, p.tax_cents);
+    audit(db, ctx, `${kind}.create`, kind, docId, `${number} total ${total}${taxCents ? ` (sales tax ${taxCents})` : ''}`);
     return docId;
   });
 }
@@ -204,6 +217,8 @@ function getDocument(db, id) {
   const d = db.prepare('SELECT d.*, c.name AS contact_name FROM documents d JOIN contacts c ON c.id=d.contact_id WHERE d.id=?').get(id);
   if (!d) throw new HttpError(404, 'That invoice or bill could not be found. It may have been deleted; go back to the list and refresh.');
   d.lines = db.prepare('SELECT l.*, a.name AS account_name FROM document_lines l JOIN accounts a ON a.id=l.account_id WHERE document_id=?').all(id);
+  d.tax = db.prepare('SELECT dt.rate_id, r.name, r.agency, dt.rate_milli, dt.taxable_cents, dt.tax_cents FROM document_tax dt JOIN tax_rates r ON r.id=dt.rate_id WHERE dt.document_id=? ORDER BY r.name').all(id);
+  d.subtotal_cents = d.total_cents - d.tax_cents;
   d.payments = db.prepare(`SELECT pa.amount_cents, p.id AS payment_id, p.pay_date, p.method, p.ref, p.voided FROM payment_applications pa JOIN payments p ON p.id=pa.payment_id WHERE pa.document_id=?`).all(id);
   return d;
 }

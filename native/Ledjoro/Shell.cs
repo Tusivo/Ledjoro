@@ -484,7 +484,7 @@ namespace Ledjoro
             nav.Entries.Clear();
             Action<string, string[][]> grp = (g, items) => { nav.Entries.Add(new NavList.Entry { Label = g, Group = true }); foreach (var i in items) nav.Entries.Add(new NavList.Entry { Key = i[0], Label = i[1] }); };
             grp("Overview", new[] { new[] { "dashboard", "Dashboard" } });
-            grp("Sales", new[] { new[] { "invoices", "Invoices" }, new[] { "customers", "Customers" } });
+            grp("Sales", new[] { new[] { "invoices", "Invoices" }, new[] { "customers", "Customers" }, new[] { "salestax", "Sales Tax" } });
             grp("Purchases", new[] { new[] { "bills", "Bills" }, new[] { "vendors", "Vendors" } });
             grp("Banking", new[] { new[] { "banking", "Bank Transactions" }, new[] { "reconcile", "Reconcile" } });
             grp("Accounting", new[] { new[] { "accounts", "Chart of Accounts" }, new[] { "journal", "Journal" }, new[] { "assets", "Fixed Assets" }, new[] { "reports", "Reports" }, new[] { "health", "Books Health" } });
@@ -514,6 +514,7 @@ namespace Ledjoro
         }
 
         // ---------- routing ----------
+        static readonly Regex TaxRe = new Regex(@"^#/salestax(?:/(rates|worksheet|payments))?$");
         static readonly Regex DocRe = new Regex(@"^#/document/(\d+)$"), RepRe = new Regex(@"^#/reports(?:/([\w-]+))?$"), SetRe = new Regex(@"^#/settings(?:/(\w+))?$"), DocListRe = new Regex(@"^#/(invoices|bills)(?:/(open|paid|void|all))?$"), BankRe = new Regex(@"^#/banking(?:/(new|categorized|excluded|rules))?$");
 
         public bool CanBack { get { return hpos > 0; } }
@@ -547,6 +548,7 @@ namespace Ledjoro
             else if ((m = DocRe.Match(path)).Success) { s = new DocDetailScreen(int.Parse(m.Groups[1].Value)); key = "invoices"; }
             else if (path == "#/bills/new") { s = new DocFormScreen("bill"); key = "bills"; }
             else if (path == "#/customers") { s = new ContactsScreen("customer", wantNew); key = "customers"; }
+            else if ((m = TaxRe.Match(path)).Success) { s = new SalesTaxScreen(m.Groups[1].Success ? m.Groups[1].Value : "rates"); key = "salestax"; }
             else if (path == "#/vendors") { s = new ContactsScreen("vendor", wantNew); key = "vendors"; }
             else if ((m = BankRe.Match(path)).Success) { s = new BankingScreen(m.Groups[1].Success ? m.Groups[1].Value : "new"); key = "banking"; }
             else if (path == "#/reconcile") { s = new ReconcileScreen(); key = "reconcile"; }

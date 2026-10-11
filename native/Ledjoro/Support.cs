@@ -11,12 +11,13 @@ namespace Ledjoro
     /// <summary>Lists that many screens need (accounts, contacts, items), fetched once and refreshed after changes.</summary>
     public static class Lists
     {
-        static Jv accounts, contacts, items, roles;
+        static Jv accounts, contacts, items, roles, taxRates;
         public static async Task<Jv> Accounts() { if (accounts == null) accounts = await App.Api.Get("api/accounts"); return accounts; }
         public static async Task<Jv> Contacts() { if (contacts == null) contacts = await App.Api.Get("api/contacts"); return contacts; }
         public static async Task<Jv> Items() { if (items == null) items = await App.Api.Get("api/items"); return items; }
         public static async Task<Jv> Roles() { if (roles == null) roles = await App.Api.Get("api/roles"); return roles; }
-        public static void Bust() { accounts = contacts = items = roles = null; }
+        public static async Task<Jv> TaxRates() { if (taxRates == null) taxRates = await App.Api.Get("api/salestax/rates"); return taxRates; }
+        public static void Bust() { accounts = contacts = items = roles = taxRates = null; }
     }
 
     /// <summary>Equal-width columns that collapse to a single column when the window is narrow.</summary>

@@ -61,6 +61,12 @@ namespace Ledjoro
             var lines = new Grid { AutoHeight = true };
             lines.Cols(Grid.Col("Description", 3f), Grid.Col(">Qty", 0.8f), Grid.Col(">Price", 1.2f), Grid.Col(">Amount", 1.2f), Grid.Col("Account", 2f));
             foreach (var l in d["lines"].Items) lines.Add(null, l["description"].Str, Fmt.Qty(l["qty_milli"].Long), Fmt.Money(l["unit_price_cents"].Long), Fmt.Money(l["amount_cents"].Long), l["account_name"].Str);
+            if (d["tax_cents"].Long > 0 || d["tax_exempt"].Long == 1)
+            {
+                lines.Add(null, RS.Sub, "Subtotal", "", "", Fmt.Money(d["subtotal_cents"].Long), "");
+                foreach (var x in d["tax"].Items) lines.Add(null, "Sales tax: " + x["name"].Str + " (" + SalesTaxScreen.Pct(x["rate_milli"].Long) + " of " + Fmt.Money(x["taxable_cents"].Long) + ")", "", "", Fmt.Money(x["tax_cents"].Long), "");
+                if (d["tax_exempt"].Long == 1) lines.Add(null, RS.Sub, "Tax-exempt customer: no sales tax charged", "", "", "", "");
+            }
             lines.Add(null, RS.Total, "Total", "", "", Fmt.Money(total), "");
             lines.Add(null, RS.Sub, "Paid", "", "", Fmt.Money(paid), "");
             lines.Add(null, RS.Total, "Balance due", "", "", Fmt.Money(total - paid), "");
@@ -124,19 +130,20 @@ namespace Ledjoro
 
         sealed class Line : RowLayout
         {
-            public readonly Combo Item, Account; public readonly Input Desc, Qty, Price; public readonly Lbl Amount = new Lbl("$0.00") { RightAlign = true, VCenter = true }; public readonly Btn Remove;
-            public Line(Jv items, Jv accts, bool inv, Action changed, Action<Line> remove) : base(2.1f, 3.1f, 0.9f, 1.3f, 1.3f, 2.2f, 0.5f)
+            public readonly Combo Item, Account; public readonly Input Desc, Qty, Price; public readonly Check Tax = new Check("", true); public readonly Lbl Amount = new Lbl("$0.00") { RightAlign = true, VCenter = true }; public readonly Btn Remove;
+            public Line(Jv items, Jv accts, bool inv, Action changed, Action<Line> remove) : base(inv ? new[] { 2.0f, 2.9f, 0.8f, 1.2f, 1.2f, 0.6f, 2.0f, 0.5f } : new[] { 2.1f, 3.1f, 0.9f, 1.3f, 1.3f, 2.2f, 0.5f })
             {
                 Fill = K.Inherit;
                 var list = new List<KeyValuePair<string, string>> { Ui.It("", "— item —") }; list.AddRange(items.Items.Where(i => i["active"].Bool).Select(i => Ui.It(i["id"].Str, i["name"].Str)));
                 Item = new Combo(100); Item.SetItems(list, ""); Desc = new Input("Description") { Width = 100 }; Qty = new Input("1") { RightAlign = true, Width = 60, Text = "1" }; Price = new Input("0.00") { RightAlign = true, Width = 80 };
                 Account = new Combo(100); Account.SetItems(Ui.AccountItems(accts, a => inv ? (a["type"].Str == "income" || a["type"].Str == "other_income") : (new[] { "expense", "cogs", "other_expense", "asset" }.Contains(a["type"].Str))));
                 Remove = new Btn("×", BK.Normal, null, true);
-                foreach (Control c in new Control[] { Item, Desc, Qty, Price, Amount, Account, Remove }) Controls.Add(c);
+                foreach (Control c in inv ? new Control[] { Item, Desc, Qty, Price, Amount, Tax, Account, Remove } : new Control[] { Item, Desc, Qty, Price, Amount, Account, Remove }) Controls.Add(c);
+                Tax.AccessibleName = "Charge sales tax on this line"; Tax.Changed += (s, e) => changed();
                 Item.Changed += (s, e) =>
                 {
                     var it = items.Items.FirstOrDefault(x => x["id"].Str == Item.Value);
-                    if (it != null && !it.IsNull) { Desc.Text = it["name"].Str; Price.Text = Fmt.Plain(it["unit_price_cents"].Long); long aid = inv ? it["income_account_id"].Long : it["expense_account_id"].Long; if (aid > 0) Account.Value = aid.ToString(); }
+                    if (it != null && !it.IsNull) { Desc.Text = it["name"].Str; Price.Text = Fmt.Plain(it["unit_price_cents"].Long); long aid = inv ? it["income_account_id"].Long : it["expense_account_id"].Long; if (aid > 0) Account.Value = aid.ToString(); if (inv && it["taxable"].Long == 0) Tax.Checked = false; }
                     changed();
                 };
                 Qty.Changed += (s, e) => changed(); Price.Changed += (s, e) => changed(); Account.Changed += (s, e) => changed();
@@ -148,7 +155,7 @@ namespace Ledjoro
         public override async Task Load()
         {
             bool inv = kind == "invoice"; var A0 = App.Api;
-            var contacts = await Lists.Contacts(); var items = await Lists.Items(); var accts = await Lists.Accounts();
+            var contacts = await Lists.Contacts(); var items = await Lists.Items(); var accts = await Lists.Accounts(); var taxJ = inv ? await Lists.TaxRates() : null;
             var page = new ScrollPage(); var s = page.Body;
             s.Add(new Header(inv ? "New Invoice" : "New Bill"));
 
@@ -166,16 +173,44 @@ namespace Ledjoro
                 f.Add(Ui.F(" ", addPerson, 150));
             }
             f.Add(Ui.F("Date", date, 170)); f.Add(Ui.F("Due date (optional)", due, 170)); f.Add(Ui.F("Number", number, 170));
-            top.Add(f); s.Add(top);
+            Combo taxRate = null; Lbl taxNote = null; Func<Jv> chosenContact = () => contacts.Items.FirstOrDefault(c => c["id"].Str == contact.Value);
+            if (inv && taxJ["rates"].Items.Any(r => r["active"].Long == 1))
+            {
+                var tl = new List<KeyValuePair<string, string>> { Ui.It("", "No sales tax") }; tl.AddRange(taxJ["rates"].Items.Where(r => r["active"].Long == 1).Select(r => Ui.It(r["id"].Str, r["name"].Str + "  (" + SalesTaxScreen.Pct(r["rate_milli"].Long) + ")")));
+                taxRate = new Combo(100); taxRate.SetItems(tl, taxJ["default_id"].IsNull ? "" : taxJ["default_id"].Str);
+                f.Add(Ui.F("Sales tax", taxRate, 250));
+                taxNote = new Lbl("", LS.Muted, true);
+            }
+            top.Add(f); if (taxNote != null) top.Add(taxNote, Theme.Px(4)); s.Add(top);
 
             s.Add(new Lbl("Lines", LS.H2));
             var linesBox = new Stack { Gap = Theme.Px(4) }; linesBox.Fill = Pnl.K.Bg;
-            var headRow = new RowLayout(2.1f, 3.1f, 0.9f, 1.3f, 1.3f, 2.2f, 0.5f) { RowHeight = Theme.Px(22) };
-            foreach (var h in new[] { "Item", "Description", "Qty", "Price", "Amount", inv ? "Income account" : "Expense account", "" }) headRow.Controls.Add(new Lbl(h, LS.Muted));
+            var headRow = new RowLayout(inv ? new[] { 2.0f, 2.9f, 0.8f, 1.2f, 1.2f, 0.6f, 2.0f, 0.5f } : new[] { 2.1f, 3.1f, 0.9f, 1.3f, 1.3f, 2.2f, 0.5f }) { RowHeight = Theme.Px(22) };
+            foreach (var h in inv ? new[] { "Item", "Description", "Qty", "Price", "Amount", "Tax", "Income account", "" } : new[] { "Item", "Description", "Qty", "Price", "Amount", "Expense account", "" }) headRow.Controls.Add(new Lbl(h, LS.Muted));
             linesBox.Add(headRow, 0);
-            var total = new Lbl("$0.00", LS.Bold);
+            var total = new Lbl("$0.00", LS.Bold); var subtotal = new Lbl("$0.00", LS.Normal); var taxTotal = new Lbl("$0.00", LS.Normal);
             var rows = new List<Line>();
-            Action recalc = () => { total.Text = Fmt.Money(rows.Sum(r => { var l = r; l.Amount.Text = Fmt.Money(l.Cents); return l.Cents; })); };
+            Func<long, long> taxOn = taxable =>
+            {   // the same sum the engine makes: each jurisdiction rounded on its own, a combined rate being the sum of its parts
+                if (taxRate == null || taxRate.Value.Length == 0) return 0;
+                var rate = taxJ["rates"].Items.FirstOrDefault(r => r["id"].Str == taxRate.Value); if (rate == null) return 0;
+                var comps = rate["kind"].Str == "group" ? rate["parts"].Items.Select(pid => taxJ["rates"].Items.First(r => r["id"].Long == pid.Long)) : new[] { rate };
+                return comps.Sum(c => (taxable * c["rate_milli"].Long + 50000) / 100000);
+            };
+            Action recalc = () =>
+            {
+                var cust = chosenContact(); bool exempt = inv && cust != null && !cust.IsNull && cust["tax_exempt"].Long == 1;
+                long sub = 0, taxable = 0; foreach (var l in rows) { l.Amount.Text = Fmt.Money(l.Cents); sub += l.Cents; if (l.Tax.Checked) taxable += l.Cents; }
+                long tax = exempt ? 0 : taxOn(taxable); subtotal.Text = Fmt.Money(sub); taxTotal.Text = Fmt.Money(tax); total.Text = Fmt.Money(sub + tax);
+                if (taxNote != null) taxNote.Text = exempt ? "This customer is tax-exempt" + (cust["tax_exempt_note"].Str.Length > 0 ? " (" + cust["tax_exempt_note"].Str + ")" : "") + ", so no sales tax is charged." : taxRate != null && taxRate.Value.Length > 0 ? "Tax is charged on the lines with Tax ticked." : "";
+            };
+            if (taxRate != null) taxRate.Changed += (a, b) => recalc();
+            contact.Changed += (a, b) =>
+            {
+                var cust = chosenContact(); if (taxRate == null || cust == null || cust.IsNull) { recalc(); return; }
+                if (cust["tax_exempt"].Long == 1) taxRate.Value = ""; else if (cust["tax_rate_id"].Long > 0) taxRate.Value = cust["tax_rate_id"].Str; else taxRate.Value = taxJ["default_id"].IsNull ? "" : taxJ["default_id"].Str;
+                recalc();
+            };
             Action<Line> remove = null;
             Func<Line> addLine = () => { var l = new Line(items, accts, inv, recalc, remove); rows.Add(l); linesBox.Add(l, 4); recalc(); return l; };
             remove = l => { if (rows.Count <= 1) return; rows.Remove(l); linesBox.Controls.Remove(l); l.Dispose(); linesBox.PerformLayout(); page.PerformLayout(); recalc(); };
@@ -183,7 +218,8 @@ namespace Ledjoro
             s.Add(linesBox);
 
             var err = new Notice(NK.Error);
-            var bottom = new Flow(); bottom.Add(Ui.B("Add Line", BK.Normal, () => { addLine(); page.PerformLayout(); })); bottom.Add(new Lbl("Total:", LS.Muted)); bottom.Add(total);
+            var bottom = new Flow(); bottom.Add(Ui.B("Add Line", BK.Normal, () => { addLine(); page.PerformLayout(); })); if (inv && taxRate != null) { bottom.Add(new Lbl("Subtotal:", LS.Muted)); bottom.Add(subtotal); bottom.Add(new Lbl("Sales tax:", LS.Muted)); bottom.Add(taxTotal); }
+            bottom.Add(new Lbl("Total:", LS.Muted)); bottom.Add(total);
             s.Add(bottom); s.Add(err);
             var actions = new Flow();
             actions.Add(Ui.BA("Save", BK.Primary, async () =>
@@ -203,10 +239,12 @@ namespace Ledjoro
                         if (r.Account.Value.Length == 0) throw new ApiException(0, "Line " + n + ": choose which account this line belongs to (for example an income account for an invoice, or an expense account for a bill).", Jv.Null);
                         var line = Json.O("description", r.Desc.Text, "qty_milli", q, "unit_price_cents", p, "account_id", long.Parse(r.Account.Value));
                         if (r.Item.Value.Length > 0) line["item_id"] = long.Parse(r.Item.Value);
+                        if (inv) line["taxable"] = r.Tax.Checked;
                         lines.Add(line);
                     }
                     var body = Json.O("kind", kind, "contact_id", long.Parse(contact.Value), "doc_date", date.Value, "memo", memo.Text, "lines", lines);
                     if (due.Text.Trim().Length > 0) body["due_date"] = due.Value; if (number.Text.Trim().Length > 0) body["number"] = number.Text.Trim();
+                    if (inv && taxRate != null && taxRate.Value.Length > 0) body["tax_rate_id"] = long.Parse(taxRate.Value);
                     var res = await A.Post("api/documents", body);
                     App.Toast((inv ? "Invoice" : "Bill") + " saved"); Nav("#/document/" + res["id"].Str);
                 }

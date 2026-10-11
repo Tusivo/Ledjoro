@@ -116,7 +116,7 @@ const DEFAULT_ACCOUNTS = [
   ['6200', 'Wages', 'expense', 'expense'], ['7000', 'Interest Expense', 'other_expense', 'other_expense'],
 ];
 
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 const MIGRATION_2 = `
 CREATE TABLE fixed_assets(
   id INTEGER PRIMARY KEY, name TEXT NOT NULL, cost_cents INTEGER NOT NULL CHECK(cost_cents > 0), salvage_cents INTEGER NOT NULL DEFAULT 0 CHECK(salvage_cents >= 0 AND salvage_cents < cost_cents),
@@ -124,6 +124,37 @@ CREATE TABLE fixed_assets(
   asset_account_id INTEGER NOT NULL REFERENCES accounts(id), accum_account_id INTEGER NOT NULL REFERENCES accounts(id), expense_account_id INTEGER NOT NULL REFERENCES accounts(id),
   posted_through TEXT NOT NULL DEFAULT '', disposed_on TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
 `;
+
+// v8: sales tax. Rates (and groups of rates, such as state + county), tax recorded on each invoice (per jurisdiction, so a return can be
+// worked out later), tax-exempt customers, taxable items and lines, and payments made to the tax agencies.
+const MIGRATION_8_TABLES = `
+CREATE TABLE IF NOT EXISTS tax_rates(
+  id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, kind TEXT NOT NULL DEFAULT 'rate' CHECK(kind IN ('rate','group')),
+  rate_milli INTEGER NOT NULL DEFAULT 0 CHECK(rate_milli BETWEEN 0 AND 100000),
+  agency TEXT NOT NULL DEFAULT '', account_id INTEGER REFERENCES accounts(id), active INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS tax_group_parts(
+  group_id INTEGER NOT NULL REFERENCES tax_rates(id), rate_id INTEGER NOT NULL REFERENCES tax_rates(id), PRIMARY KEY(group_id, rate_id));
+CREATE TABLE IF NOT EXISTS document_tax(
+  id INTEGER PRIMARY KEY, document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE, rate_id INTEGER NOT NULL REFERENCES tax_rates(id),
+  rate_milli INTEGER NOT NULL, taxable_cents INTEGER NOT NULL, tax_cents INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS dt_doc ON document_tax(document_id);
+CREATE TABLE IF NOT EXISTS tax_remittances(
+  id INTEGER PRIMARY KEY, agency TEXT NOT NULL DEFAULT '', period_from TEXT NOT NULL DEFAULT '', period_to TEXT NOT NULL DEFAULT '', pay_date TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL CHECK(amount_cents > 0), bank_account_id INTEGER NOT NULL REFERENCES accounts(id), tax_account_id INTEGER NOT NULL REFERENCES accounts(id),
+  memo TEXT NOT NULL DEFAULT '', entry_id INTEGER REFERENCES journal_entries(id), voided INTEGER NOT NULL DEFAULT 0, created_by INTEGER REFERENCES users(id), created_at INTEGER NOT NULL);
+`;
+const MIGRATION_8_COLUMNS = [
+  ['contacts', 'tax_exempt', 'INTEGER NOT NULL DEFAULT 0'], ['contacts', 'tax_exempt_note', "TEXT NOT NULL DEFAULT ''"], ['contacts', 'tax_rate_id', 'INTEGER'],
+  ['items', 'taxable', 'INTEGER NOT NULL DEFAULT 1'],
+  ['documents', 'tax_rate_id', 'INTEGER'], ['documents', 'tax_cents', 'INTEGER NOT NULL DEFAULT 0'], ['documents', 'tax_exempt', 'INTEGER NOT NULL DEFAULT 0'],
+  ['document_lines', 'taxable', 'INTEGER NOT NULL DEFAULT 0'],
+];
+function migrate8(db) {
+  db.exec(MIGRATION_8_TABLES);
+  for (const [table, col, ddl] of MIGRATION_8_COLUMNS) {
+    if (!db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${ddl}`);
+  }
+}
 
 const MIGRATION_7 = `
 CREATE TABLE IF NOT EXISTS watched_files(
@@ -228,7 +259,8 @@ function openDb(file, opts = {}) {
   if (db.prepare('PRAGMA user_version').get().user_version === 4) tx(db, () => { db.exec(MIGRATION_5); db.exec('PRAGMA user_version = 5'); });
   if (db.prepare('PRAGMA user_version').get().user_version === 5) tx(db, () => { const have = new Set(db.prepare('PRAGMA table_info(contacts)').all().map((c) => c.name)); for (const stmt of MIGRATION_6.split(';').map((x) => x.trim()).filter(Boolean)) { const col = /ADD COLUMN (\w+)/.exec(stmt)[1]; if (!have.has(col)) db.exec(stmt); } db.exec('PRAGMA user_version = 6'); });
   if (db.prepare('PRAGMA user_version').get().user_version === 6) tx(db, () => { db.exec(MIGRATION_7); db.exec('PRAGMA user_version = 7'); });
-  if (cur > 7) throw new Error(`Database schema v${cur} is newer than this program supports`);
+  if (db.prepare('PRAGMA user_version').get().user_version === 7) tx(db, () => { migrate8(db); db.exec('PRAGMA user_version = 8'); });
+  if (cur > 8) throw new Error(`Database schema v${cur} is newer than this program supports`);
   if (file !== ':memory:') {
     try { fs.chmodSync(file, 0o600); } catch { /* best effort on Windows */ }
   }
@@ -238,4 +270,4 @@ function openDb(file, opts = {}) {
 const getSetting = (db, k) => db.prepare('SELECT value FROM settings WHERE key=?').get(k)?.value ?? '';
 const setSetting = (db, k, v) => db.prepare('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(k, String(v));
 
-module.exports = { openDb, purgeImportedDocuments, tx, getSetting, setSetting, SCHEMA_VERSION, ACCOUNT_TYPES, SUBTYPES, PERMISSIONS, BUILTIN_ROLES };
+module.exports = { openDb, migrate8, purgeImportedDocuments, tx, getSetting, setSetting, SCHEMA_VERSION, ACCOUNT_TYPES, SUBTYPES, PERMISSIONS, BUILTIN_ROLES };

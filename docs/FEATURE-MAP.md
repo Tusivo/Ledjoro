@@ -22,7 +22,7 @@ Built from the research in `docs/research/quickbooks-advanced-reference.md`. We 
 | Credit memos, refunds, customer deposits | ○ | Overpayments can be left as unapplied credit on A/R |
 | Online payment links / card & ACH processing | ✖ for core | Would require a payment-processor integration (opt-in plug-in) |
 | Late fees, reminders, recurring invoices | ○ | Needs a scheduler + e-mail (opt-in) |
-| Sales tax | ○ | Manual via accounts today |
+| Sales tax | ✔ | Tax rates and combined rates (state + county), tax per invoice line, tax-exempt customers, a return worksheet for any period, payments to the agencies. Counts sales by invoice date (accrual); no automatic rate lookup by address; no sales tax on credit memos yet |
 | PDF/e-mail invoices | ◐ | Print view ✔; PDF/e-mail ○ |
 
 ## Purchases & payables
