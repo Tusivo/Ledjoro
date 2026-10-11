@@ -55,9 +55,6 @@ The **Theme** drop-down in the top-right corner (also on the sign-in screen) off
 
 The theme is **Light** until you choose another; the choice is saved in `Ledjoro-Data\shell.json`, and text added to that file by hand does not reset it.
 
-![A balance sheet in Ledjoro's Night theme](docs/screenshots/night-theme-balance-sheet.png)
-*A balance sheet in the Night theme. Light and Dark are there too.*
-
 ## What it does today
 
 | Area | Features |
@@ -129,6 +126,9 @@ Tax IDs/SSNs are never imported (data minimisation). Format details: [docs/FORMA
 
 ![QuickBooks Sync page explaining how to connect to QuickBooks Desktop](docs/screenshots/quickbooks-sync.png)
 *QuickBooks Sync: copy your QuickBooks Desktop data across, read-only, after a preview.*
+
+![A balance sheet in Ledjoro's Night theme](docs/screenshots/night-theme-balance-sheet.png)
+*A balance sheet in the Night theme. Light and Dark are there too.*
 
 ## For developers: building from source
 

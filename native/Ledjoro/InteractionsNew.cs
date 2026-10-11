@@ -139,19 +139,26 @@ namespace Ledjoro
             }
 
             // ---- README pictures (only when LEDJORO_README_SHOTS=1): clean scenes of the demo company, window only, saved as readme-*.png -----
+            // the themes alternate light, night, dark from one picture to the next
             if (Environment.GetEnvironmentVariable("LEDJORO_README_SHOTS") == "1")
             {
                 string was = Theme.Name;
-                Theme.Use("light"); await Drive.Settle(400);
-                await form.GoAsync("#/dashboard"); await Drive.Settle(1200); await shot("readme-dashboard-light");
-                await form.GoAsync("#/invoices"); await Drive.Settle(900); await shot("readme-invoices");
-                await form.GoAsync("#/reports/profit-loss"); await Drive.Settle(900); await shot("readme-profit-loss");
-                await form.GoAsync("#/banking"); await Drive.Settle(900); await shot("readme-banking");
-                await form.GoAsync("#/salestax/worksheet"); await Drive.Settle(700); { var wsx = Drive.Find<SalesTaxScreen>(form.Content); var px = Drive.All<Combo>(wsx).First(c => c.Items.Any(i => i.Key == "last-quarter")); px.Value = "this-year"; await Drive.Settle(1000); } await shot("readme-sales-tax-worksheet");
+                Func<string, Task> useTheme = async n => { Theme.Use(n); await Drive.Settle(600); };
+                await useTheme("light");
+                await form.GoAsync("#/dashboard"); await Drive.Settle(7000); await shot("readme-dashboard-light");   // long enough for the last toast to go
+                await useTheme("night");
                 await form.GoAsync("#/invoices/new"); await Drive.Settle(700); { var cx = Drive.All<Combo>(form.Content).First(); var cust = (await api.Get("api/contacts?kind=customer")).Items.First(c => c["name"].Str == "Tax Test Buyer"); cx.Value = cust["id"].Str; var spr = (await api.Get("api/salestax/rates"))["rates"].Items.First(r => r["name"].Str == "Springfield"); Drive.All<Combo>(form.Content).First(c => c.Items.Any(i => i.Value == "No sales tax")).Value = spr["id"].Str; Drive.Field(form.Content, "Description").Text = "Custom website design"; Drive.Find<Input>(form.Content, i => i.Cue == "0.00").Text = "1200.00"; await Drive.Settle(400); } await shot("readme-invoice-with-tax");
+                await useTheme("dark");
+                await form.GoAsync("#/salestax/worksheet"); await Drive.Settle(700); { var wsx = Drive.Find<SalesTaxScreen>(form.Content); var px = Drive.All<Combo>(wsx).First(c => c.Items.Any(i => i.Key == "last-quarter")); px.Value = "this-year"; await Drive.Settle(1000); } await shot("readme-sales-tax-worksheet");
+                await useTheme("light");
+                await form.GoAsync("#/invoices"); await Drive.Settle(900); await shot("readme-invoices");
+                await useTheme("night");
+                await form.GoAsync("#/banking"); await Drive.Settle(900); await shot("readme-banking");
+                await useTheme("dark");
+                await form.GoAsync("#/reports/profit-loss"); await Drive.Settle(900); await shot("readme-profit-loss");
+                await useTheme("light");
                 await form.GoAsync("#/quickbooks"); await Drive.Settle(7000); await shot("readme-quickbooks");
-                Theme.Use("night"); await Drive.Settle(500);
-                await form.GoAsync("#/dashboard"); await Drive.Settle(1200); await shot("readme-dashboard-night");
+                await useTheme("night");
                 await form.GoAsync("#/reports/balance-sheet"); await Drive.Settle(900); await shot("readme-balance-sheet-night");
                 Theme.Use(was); await Drive.Settle(400);
             }
