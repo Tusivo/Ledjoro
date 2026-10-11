@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tests for the QR code generator and reader (native\Ledjoro\Qr.cs): Reed-Solomon repair, every size, rotation, tilt, blur, noise, smudges,
+       and codes made by / read by other programs (see scripts\qr-cross-check.py). Run with: npm run test:qr -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Ledjoro\Qr.cs" Link="Qr.cs" />
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+</Project>

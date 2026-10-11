@@ -1,0 +1,142 @@
+# Ledjoro
+
+Open-source small-business accounting for Windows, with **built-in converters for common QuickBooks interchange formats**.
+One native program (no browser, no Chromium, no Electron, no web view), your data in a local SQLite file, zero npm dependencies. Original design and code; not affiliated with or endorsed by Intuit.
+
+> **Status: v0.9.0-beta.1 — a working beta, not yet audited.** Have an accountant sanity-check your books and an independent
+> security review done before relying on it for real finances. See [SECURITY.md](SECURITY.md) and [LEGAL.md](LEGAL.md).
+
+## Quick start (Windows 10/11)
+
+Double-click **`Ledjoro.exe`**. That is the whole install: one file, nothing else to set up.
+
+- **First run:** the app opens on a setup screen with the one-time setup token already filled in. Create the administrator, then **print or vault the sign-in sheet** (it shows your password and a one-time recovery key, in red, once).
+- **Everything stays beside the program.** Ledjoro writes only to a folder called `Ledjoro-Data` next to `Ledjoro.exe` (the books, settings, logs, and the unpacked engine). Each additional company lives in its own subfolder, `Ledjoro-Data\Companies\<name>`. Nothing goes to your user profile or the registry. To move to another computer, **close Ledjoro and copy `Ledjoro.exe` together with `Ledjoro-Data`** (copy, don't Cut: the folder's permissions belong to your Windows user). Back up and restore from *Settings - Data & backup* (encrypted; one button each).
+- **Private by construction:** nothing listens on your network, and there is no telemetry or outbound connection. See [SECURITY.md](SECURITY.md) for how the app and its hidden engine talk to each other.
+- **The books file is protected.** While Ledjoro runs it holds the file exclusively (other programs get "database is locked"), the folder's permissions are limited to your Windows user and the system, a read-only flag on the file is cleared automatically (it used to make every sign-in fail with a vague error), and at every start the file is checked for edits made outside Ledjoro, which are reported on screen. See [SECURITY.md](SECURITY.md) for what this can and cannot stop.
+- **One copy at a time:** launching it again brings the running window forward.
+- **Unsigned:** the exe is not code-signed, so Windows SmartScreen may warn the first time ("More info" then "Run anyway"). Compare `Ledjoro.exe.sha256` with the file, and sign it (Authenticode certificate) if you distribute it to others.
+- **Quiet imports.** Importing accounts, vendors and other lists no longer fills the screen with yellow boxes. Yellow is kept for things that need a look (an unbalanced trial balance, rows that could not be read); information, such as accounts left out because they hold no money (QuickBooks "non-posting" accounts), is one grey line with a "Show notes" link.
+- **Reconcile** (sidebar, Banking). Pick a bank or card account, type the statement's date and closing balance, click the lines that appear on the statement, and finish when the difference is 0.00. The books refuse to finish until it agrees to the cent. Finished reconciliations are listed, and the newest one per account can be undone. Nothing in the ledger changes; "cleared" is a separate record.
+- **Matching.** A bank row that is already in your books (same amount, within ten days) is offered as "Already in your books?" so it is linked instead of being counted twice. "Match automatically" links every row that has exactly one possible entry and leaves the uncertain ones to you. Bank rules can now be removed from the Rules tab.
+- **Automatic backups** (Settings, Data & backup). Turn on daily, weekly or monthly backups into a folder you choose (default `Backups` inside the company folder, so it moves with the program, or a USB drive or synced folder). They are locked with your recovery key, or deliberately unlocked; a passphrase is never stored, so it is not offered. Only the newest N automatic backups are kept; backups you save by hand are never touched. While Ledjoro is open it checks every half hour; failures are explained on the page.
+- **Search** (Ctrl+K, or the Search button at the top). Finds customers, vendors, invoices and bills (by number, name or amount), accounts, journal entries and pages.
+- **QuickBooks Sync** (sidebar, Data). Connects to QuickBooks Desktop through Intuit's free QuickBooks Web Connector, which is installed with QuickBooks Desktop. "Set up the connection" switches on a small link that works only on this computer; you save a connection file (it has no password in it), add it to the Web Connector, type the one-time password Ledjoro shows, and press "Update Selected" there. Ledjoro then reads (never writes) the chart of accounts, customers, vendors, items, invoices, bills, customer and bill payments, deposits, checks, card charges and credits, sales receipts, credit memos, vendor credits, journal entries and transfers, and shows a preview. Nothing reaches your books until you press "Import into my books", and the import appears under Recent imports so it can be undone. Transactions are rebuilt as balanced journal entries tagged with QuickBooks' own transaction ids, so syncing again never imports one twice, and later syncs only ask QuickBooks for what changed. Limits: edits or voids made in QuickBooks after a transaction was imported are not copied; estimates, purchase orders, payroll and inventory adjustments are not brought across; it has been tested against a simulated Web Connector and QuickBooks, not yet against every real company file, so check the preview and your reports after the first import.
+- **Watched download folder** (Import & Convert, "Watch a Folder for Bank Downloads"). We recommend a folder just for bank statements: press "Create a Folder for Me" (it makes "Ledjoro Bank Statements" in Documents) or choose your own, and save each bank download there. Ledjoro warns before watching a busy folder such as Downloads or Desktop. "How to Download From Your Bank" opens a window with the general steps and links to the help pages of popular banks (and a web search for the others). Every minute or so, while Ledjoro is open, it looks for new bank statement files there (OFX, QFX and QBO), and lists each one on the Bank Transactions page, on the Dashboard and under the setting: the bank, the account ending, the number of transactions and the dates. Choose the account and press Import; the account is remembered for that bank next time. Files are never moved, changed or deleted, and nothing is imported until you press the button. A file that has been imported or ignored is recognised by its content, so renaming it or downloading it again does not bring it back, while undoing an import makes its file importable again. Only files that arrive after you switch it on are listed (the button "Look at Older Files Too" brings in the newest 50 that were already there). CSV downloads are not picked up automatically because every bank lays them out differently: use Choose File on the same page and match the columns by hand.
+- **Command line:** `node src/cli.js` converts files and makes or restores backups without the app (see below).
+
+### What is inside the exe
+
+- **The window** is a native Windows Forms program (.NET Framework 4.8, which ships with Windows 10/11). Every screen is drawn with ordinary Windows controls, themed by the app. There is no HTML, browser engine or web view anywhere.
+- **The engine** (ledger, SQLite database, importers, reports) is the same code the tests exercise. It runs as a hidden background process embedded in the exe (Node.js single-executable app), unpacks to `Ledjoro-Data\engine\` on first launch, has its SHA-256 verified on every start, and stops when the app closes. Node.js is a JavaScript runtime, not a browser.
+- The only build-time tool that is not part of this repository is `postject` (pinned, not shipped).
+
+### Building from source
+
+Needs Windows, Node.js 24+ and the .NET SDK.
+
+```bash
+npm run build          # -> dist/Ledjoro.exe (~90 MB) + dist/Ledjoro.exe.sha256
+npm test               # 55 engine tests
+npm run build:engine   # just the engine exe (dist/Ledjoro-Engine.exe)
+```
+The theme is **Light** until you choose another; the choice is saved in `Ledjoro-Data\shell.json`, and text added to that file by hand does not reset it.
+
+QR codes are made and read by Ledjoro itself (`native/Ledjoro/Qr.cs`, no library). `npm run test:qr` tests the generator and reader (repair, rotation, tilt, blur, noise, smudges), and `scripts/qr-cross-check.py` checks them against independent programs (segno makes codes Ledjoro must read; zxing-cpp must read Ledjoro's codes). Camera scanning needs the Windows SDK at build time (it is skipped without it) and the Windows privacy setting "Let desktop apps access your camera".
+
+The app has its own self-test: `Ledjoro.exe --selftest <folder>` drives every screen and dialog, saves screenshots and writes `result.txt`. Run it against a throwaway data folder (`LEDJORO_DATA`), never your real books. For development, `LEDJORO_ENGINE_JS=src/engine.js` makes the app run the engine from source with `node`.
+
+## Sample data
+
+```bash
+npm run demo:seed              # 5 years of history (Oct 2021 - Sep 2026)
+node scripts/make-demo-data.js --years 1   # or 1-10 years
+```
+Generates a fully **synthetic** company, *Birchwood Design Studio LLC* (phones are in the fictional 603-555-01xx range), with a believable trajectory: a thin first year, steady growth to a ~30% margin, customers who join and leave, price and payroll increases, annual equipment purchases with depreciation, a loan that amortizes, seasonal dips, slow payers, quarterly owner distributions, and a recent statement waiting for review. About 1,100 invoices/bills and 1,100 payments over five years. It writes:
+- `samples/demo/` - QuickBooks-style files to test the converters (`transactions.iif`, a `.qbo` bank statement, chart/customer/vendor/item CSVs, opening and expected trial balances) - see its `README.md` for the import order;
+- `demo-data/ledjoro.db` - a ready-made database with **no users**. Copy it to its own folder, set `LEDJORO_DATA` to that folder before launching `Ledjoro.exe`, then create your own administrator on first launch.
+
+The generator is seeded (reproducible) and self-checking: it loads the same activity natively *and* through the IIF converter and fails unless both trial balances match to the cent.
+
+## Themes
+
+The **Theme** drop-down in the top-right corner (also on the sign-in screen) offers **Light** (the default), **Dark** (black with gray and white text) and **Night** (deep navy with soft blue, mint and sand accents, inspired by the Night Owl editor theme). The window title bar and scroll bars follow the choice, and it is remembered in `shell.json` in your data folder.
+
+## What it does today
+
+| Area | Features |
+|---|---|
+| Core ledger | Double-entry journal; integer-cent math (no floating point); immutable posted entries (DB triggers) with reversal-based corrections; closing date |
+| Sales | Customers, items, invoices (qty × price, terms, auto numbering), partial payments, void |
+| Purchases | Vendors (1099 flag), bills, bill payments, void |
+| Banking | Statement import (OFX/QFX/QBO), duplicate-proof, categorize/exclude, match-text rules, “always do this” |
+| Accounting | Chart of accounts (editable), manual journal entries, entry reversal |
+| Reports | Profit & loss, balance sheet, trial balance, A/R & A/P aging (open-item, works on imported data), sales by customer, general ledger, dashboard; print-friendly |
+| Conversion | IIF, OFX/QFX/QBO, qbXML, QBO-API JSON, CSV (accounts, customers, vendors, items, trial balance, account registers), **any other CSV by dragging its columns onto what they mean**, Ledjoro JSON; preview before commit; idempotent re-import |
+| Users | Roles with per-permission control (custom roles), forced password change for new users, lockout, audit log, **recovery key** for a lost password, optional **passkey sign-in** (Windows Hello, phone or security key) |
+| Data ownership | Full JSON export, CSV exports, **one-click backup** from the app: locked with your recovery key (recommended), with a passphrase of your own (the recovery key opens it too), or not locked at all |
+
+### Beyond the basics - things QuickBooks does not do (or does not do well)
+| Feature | What it gives you |
+|---|---|
+| **Books health check** | A free, explainable review: duplicate invoices/bills, overdrawn accounts, balances on the wrong side, stale bank items, invoice-number gaps, entries dated years ahead, unusually large amounts, missing backups. Every finding says *why it matters* and links to the records. Runs locally; no AI, no data sent anywhere |
+| **Undo import** | QuickBooks cannot undo an import. Here every import is a numbered batch; *Undo* posts reversing entries (history stays intact, every period nets to zero) and lets you import the corrected file again |
+| **Fixed-asset register** | Straight-line depreciation schedules, one-click "post depreciation through...", disposal with gain/loss, and exact-to-the-cent totals (QuickBooks Online has no fixed-asset manager) |
+| **13-week cash forecast** | Built from your own history: open invoices land when *each customer actually pays* (not just the due date), open bills on their due dates, plus recurring payroll/loan/draw patterns. Two scenarios, lowest-cash warning |
+| **Backups you cannot get locked out of, and one-button restore** | One file, AES-256, integrity-checked before it is saved. **Your recovery key opens it**, so forgetting a passphrase is never fatal (a passphrase is optional), and you can choose not to lock it. Restore reads the file first, asks only for what it needs, validates it, saves a safety copy of your current data, swaps everything in one atomic step, and signs everyone out. QuickBooks Online has no real backup/restore |
+| **Recovery QR code** | The recovery sheet (on screen and printed) carries a QR code. On the sign-in screen, "Forgot your password?" then "Scan the QR code with my camera": hold the code up to the webcam and your username and recovery key fill themselves in; you then choose a new password. Hidden on screen until "Show secrets"; other QR codes the camera sees are ignored; pictures are never saved or sent anywhere |
+| **Several companies** | Each company is its own folder with its own books, users, passwords and recovery key, nothing shared. Switch from the company name at the top of the window, or from the sign-in screen; new ones are added in two clicks, and company folders copied in from another computer are found automatically |
+| **Errors in plain words** | Every message says what happened, why, and what to do next (no codes, no jargon). A test checks every message the engine can show, and database, disk, permission and connection problems are translated the same way |
+| **Tamper-evident audit log** | Hash-chained and append-only; *Verify integrity* proves nobody edited history |
+| **Recovery key & printable sign-in sheet** | Save-this-now reminder, a printable sheet, and a one-use key to reset a lost password without e-mail or a vendor account |
+| **Themes** | Light (default), Dark and Night from a drop-down in the top-right corner |
+| **Text size** | The same drop-down also has Text size: Normal, Medium (15% bigger) or Large (30% bigger). Fonts and spacing grow together. Ledjoro closes and reopens to apply it, and remembers the choice |
+
+See [docs/FEATURE-MAP.md](docs/FEATURE-MAP.md) for what is done, partial, planned, or deliberately out of scope compared with the QuickBooks Online Advanced research.
+
+## Converting from QuickBooks
+
+**In the app:** *Import & convert* → choose file → *Preview* → *Import now*. Nothing is written until you confirm; re-importing the same file is safe.
+
+**From the command line** (no app or database needed; needs Node.js 24+):
+```bash
+node src/cli.js formats
+node src/cli.js convert samples/sample.iif                          # -> samples/sample.obx.json
+node src/cli.js convert tb.csv --format csv-trialbalance --asof 2026-01-01
+node src/cli.js convert Personal.CSV --format csv-register --register "Personal Checking"
+node src/cli.js convert export.iif --date-order dmy
+```
+
+Recommended migration path from QuickBooks:
+1. Export the **Chart of Accounts**, **Customer** and **Vendor** lists, and **Products & Services** (CSV, or an IIF list export from Desktop).
+2. Export a **Trial Balance** (CSV) as of your cut-over date → imported as one balanced opening-balance entry.
+3. For history, export transactions as **IIF** (Desktop) — they convert to balanced journal entries.
+4. Import recent **bank statements** (.QBO/.OFX/.QFX) to continue reconciling.
+
+Not supported on purpose: proprietary `.QBW` / `.QBB` company files (undocumented; reverse engineering them is a legal risk — see LEGAL.md).
+Tax IDs/SSNs are never imported (data minimisation). Format details: [docs/FORMATS.md](docs/FORMATS.md). Sample files in `samples/` are synthetic.
+
+## Configuration (environment variables)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `LEDJORO_DATA` | `Ledjoro-Data` next to the exe (the CLI uses `./data`) | Folder for the database, log and settings |
+| `LEDJORO_BACKUP_PASSPHRASE` | — | Passphrase for the CLI `backup`/`restore` (12+ chars) |
+| `LEDJORO_ENGINE_JS` | — | Development only: run the engine from this source file instead of the embedded one |
+
+```bash
+LEDJORO_BACKUP_PASSPHRASE='…long passphrase…' node src/cli.js backup books.obbak
+LEDJORO_BACKUP_PASSPHRASE='…' node src/cli.js restore books.obbak ./restored/ledjoro.db
+```
+
+## Layout
+```
+native/Ledjoro/  the Windows app (C#, WinForms): Shell (window, routing), one file per group of screens, custom-drawn controls (Controls, Inputs, GridView, Dialogs), Theme, Api (talks to the engine), Engine (starts it), SelfTest + Interactions
+src/  config, db (schema+triggers+migrations), util (money/validation/phones), ledger, domain, reports, auth, audit, backup, health, fixedassets, forecast, app (JSON API routes), engine (entry point), cli
+src/importers/  model, iif, ofx, qbxml (+QBO JSON), csv      src/convert.js  detect → parse → plan → commit, OBX export
+scripts/  build-native.js (builds Ledjoro.exe), build-exe.js (engine exe), make-demo-data.js
+test/  core.test.js (ledger+converters), http.test.js (auth, CSRF, RBAC, headers, limits, end-to-end), accounts.test.js (phones, recovery key), features.test.js (backup, undo import, assets, health, forecast), restore.test.js
+```
+
+## License
+AGPL-3.0-or-later (see `LICENSE`): anyone running a modified hosted version must share their changes. Change it before publishing if you prefer MIT/Apache.
