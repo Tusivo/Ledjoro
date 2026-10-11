@@ -23,6 +23,7 @@ namespace Ledjoro
             new[] { Color.FromArgb(124, 58, 237),  Color.FromArgb(167, 139, 250) },   // 4 purple
             new[] { Color.FromArgb(6, 119, 163),   Color.FromArgb(77, 196, 232) },    // 5 sea blue
             new[] { Color.FromArgb(100, 116, 139), Color.FromArgb(148, 163, 184) },   // 6 slate
+            new[] { Color.FromArgb(219, 39, 119),  Color.FromArgb(244, 114, 182) },   // 7 pink
         };
         static readonly Dictionary<string, int> Tiles = new Dictionary<string, int>
         {
@@ -33,6 +34,7 @@ namespace Ledjoro
             { "accounts", 4 }, { "journal", 4 }, { "assets", 4 }, { "reports", 4 }, { "health", 4 },
             { "import", 5 }, { "quickbooks", 5 },
             { "settings", 6 }, { "about", 6 },
+            { "support", 7 },
         };
         public static bool Has(string key) { return key != null && Tiles.ContainsKey(key); }
         public static Color TileColor(string key) { int i; return Tiles.TryGetValue(key ?? "", out i) ? Palette[i][Theme.Dark ? 1 : 0] : Color.Gray; }
@@ -102,6 +104,14 @@ namespace Ledjoro
                     case "quickbooks":
                         g.DrawLine(pen, P(0.0f, 0.28f), P(1.0f, 0.28f)); g.DrawLines(pen, new[] { P(0.72f, 0.0f), P(1.0f, 0.28f), P(0.72f, 0.56f) });
                         g.DrawLine(pen, P(1.0f, 0.74f), P(0.0f, 0.74f)); g.DrawLines(pen, new[] { P(0.28f, 0.46f), P(0.0f, 0.74f), P(0.28f, 1.0f) }); break;
+                    case "support":
+                        using (var heart = new GraphicsPath())
+                        {
+                            heart.AddBezier(P(0.5f, 0.95f), P(0.1f, 0.65f), P(0.0f, 0.35f), P(0.2f, 0.12f)); heart.AddBezier(P(0.2f, 0.12f), P(0.35f, 0.0f), P(0.5f, 0.12f), P(0.5f, 0.28f));
+                            heart.AddBezier(P(0.5f, 0.28f), P(0.5f, 0.12f), P(0.65f, 0.0f), P(0.8f, 0.12f)); heart.AddBezier(P(0.8f, 0.12f), P(1.0f, 0.35f), P(0.9f, 0.65f), P(0.5f, 0.95f));
+                            g.DrawPath(pen, heart);
+                        }
+                        break;
                     case "about":
                         g.DrawEllipse(pen, R(0.0f, 0.0f, 1.0f, 1.0f)); g.DrawLine(pen, P(0.5f, 0.44f), P(0.5f, 0.74f)); g.FillEllipse(fill, R(0.44f, 0.22f, 0.12f, 0.12f)); break;
                     case "settings":

@@ -3,7 +3,7 @@
 Accounting data is sensitive and high-value. This document states what Ledjoro defends against, how, and what it does **not** (yet) cover.
 
 ## Design principles
-- **Minimal attack surface:** zero third-party runtime dependencies (no supply-chain exposure); one SQLite file; no outbound network calls; no telemetry; **no browser, web view or HTML rendering** (the window is native Windows controls, so there is no page for a script to run in).
+- **Minimal attack surface:** zero third-party runtime dependencies (no supply-chain exposure); one SQLite file; no background network calls and no telemetry (the one outbound request is the About page's **Check for Updates**, made only when clicked, as are the Support and Buy Me a Coffee buttons, which only open a web page in your browser: it reads this project's GitHub release list over HTTPS, accepts a download only from `github.com/Tusivo/Ledjoro/releases/download/`, checks the size, the Windows program header and GitHub's published SHA-256, then renames the running `Ledjoro.exe` to `Ledjoro-<version>-backup.exe` before putting the new file in place, restoring the old one if that fails); **no browser, web view or HTML rendering** (the window is native Windows controls, so there is no page for a script to run in).
 - **Secure by default:** the engine listens on loopback only and refuses every request that lacks a secret key only the app knows; strict response headers; no CORS.
 - **Defence in depth:** every rule is enforced in code *and* (for ledger immutability, audit append-only, amount sanity) by the database.
 - **Data minimisation:** tax IDs/SSNs are neither stored nor imported; passwords are never logged; request bodies are never logged.

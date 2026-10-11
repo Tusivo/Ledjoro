@@ -48,13 +48,45 @@ namespace Ledjoro
             {
                 check(System.Text.RegularExpressions.Regex.IsMatch(AboutScreen.Version, @"^\d+\.\d+\.\d+(-[a-z]+\.\d+)?$"), "the program knows its version number (" + AboutScreen.Version + ")");
                 check(AboutScreen.Version == "0.9.0-beta.1", "the version is 0.9.0-beta.1");
+                check(Updater.Compare("0.9.0-beta.1", "v0.9.0-beta.2") < 0 && Updater.Compare("0.9.0-beta.2", "0.9.0") < 0 && Updater.Compare("0.9.0", "0.10.0") < 0 && Updater.Compare("v1.0.0", "1.0.0") == 0 && Updater.Compare("0.9.0-beta.10", "0.9.0-beta.9") > 0, "version numbers are put in the right order");
+                {
+                    string dl = "https://github.com/" + Updater.Repo + "/releases/download/";
+                    var list = Json.Parse("[{\"tag_name\":\"v0.9.0-beta.1\",\"draft\":false,\"name\":\"a\",\"assets\":[{\"name\":\"Ledjoro.exe\",\"size\":5,\"browser_download_url\":\"" + dl + "v0.9.0-beta.1/Ledjoro.exe\"}]},"
+                        + "{\"tag_name\":\"v0.9.0-beta.2\",\"draft\":false,\"name\":\"b\",\"body\":\"notes\",\"assets\":[{\"name\":\"Ledjoro.exe\",\"size\":2000000,\"digest\":\"sha256:ABC\",\"browser_download_url\":\"" + dl + "v0.9.0-beta.2/Ledjoro.exe\"}]},"
+                        + "{\"tag_name\":\"v9.9.9\",\"draft\":true,\"assets\":[{\"name\":\"Ledjoro.exe\",\"size\":1,\"browser_download_url\":\"" + dl + "v9.9.9/Ledjoro.exe\"}]},"
+                        + "{\"tag_name\":\"v8.0.0\",\"draft\":false,\"assets\":[{\"name\":\"Ledjoro.exe\",\"size\":1,\"browser_download_url\":\"https://evil.example/Ledjoro.exe\"}]}]");
+                    var pick = Updater.Pick(list);
+                    check(pick != null && pick.Version == "0.9.0-beta.2" && pick.Sha256 == "abc" && pick.Notes == "notes", "the update check picks the newest published release (not a draft, not a file from somewhere else)");
+                    string td = Path.Combine(Path.GetTempPath(), "ledjoro-upd-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(td);
+                    try
+                    {
+                        string exe = Path.Combine(td, "Ledjoro.exe"), nw = Path.Combine(td, "Ledjoro.update.download");
+                        var big = new byte[1100000]; big[0] = (byte)'M'; big[1] = (byte)'Z'; File.WriteAllBytes(exe, new byte[] { 1, 2, 3 }); File.WriteAllBytes(nw, big);
+                        var rel = new Updater.Release { Size = big.Length, Sha256 = Updater.HashOf(nw) };
+                        Updater.Verify(nw, rel); bool badCaught = false;
+                        try { Updater.Verify(nw, new Updater.Release { Size = big.Length, Sha256 = "00" }); } catch (Updater.UpdateError) { badCaught = true; }
+                        bool shortCaught = false; try { Updater.Verify(nw, new Updater.Release { Size = big.Length + 1 }); } catch (Updater.UpdateError) { shortCaught = true; }
+                        check(badCaught && shortCaught, "a download that does not match its published size or fingerprint is refused");
+                        string bk = Updater.Install(nw, exe, "0.9.0-beta.1");
+                        check(Path.GetFileName(bk) == "Ledjoro-0.9.0-beta.1-backup.exe" && File.ReadAllBytes(bk).Length == 3 && File.ReadAllBytes(exe).Length == big.Length && !File.Exists(nw), "installing keeps the old program as a backup in the same folder and puts the new one in its place");
+                        File.WriteAllBytes(nw, big); string bk2 = Updater.Install(nw, exe, "0.9.0-beta.1");
+                        check(Path.GetFileName(bk2) == "Ledjoro-0.9.0-beta.1-backup (2).exe" && File.Exists(bk), "a second install never overwrites an earlier backup");
+                        bool failed = false; try { Updater.Install(Path.Combine(td, "missing.download"), exe, "0.9.1"); } catch (Updater.UpdateError) { failed = true; }
+                        check(failed && File.Exists(exe), "if the new file cannot be put in place the old program is put back");
+                    }
+                    finally { try { Directory.Delete(td, true); } catch (Exception) { } }
+                }
                 await form.GoAsync("#/about"); await Drive.Settle(500);
                 var ab = Drive.Find<AboutScreen>(form.Content);
                 check(ab != null && Drive.All<Lbl>(ab).Any(l => l.Text == "Version " + AboutScreen.Version), "the About page shows the version");
-                var excerpt = Drive.All<Lbl>(ab).FirstOrDefault(l => l.Text.Contains("Ledjoro") && l.Text.Length > 300);
+                var excerpt = Drive.All<Lbl>(ab).FirstOrDefault(l => l.Text.Contains("Open-source") && l.Text.Length > 300);
                 check(excerpt != null && !excerpt.Text.Contains("**") && !excerpt.Text.Contains("](") && !excerpt.Text.Contains("`"), "the About page shows a readable excerpt of the README (no markdown marks)");
                 check(excerpt != null && excerpt.Text.EndsWith("\u2026") && Drive.All<Lbl>(ab).Any(l => l.Text == "Show the whole README"), "the excerpt is cut at a paragraph and the whole README is one click away");
+                check(Drive.Button(ab, "Check for Updates") != null, "the About page has a Check for Updates button");
+                check(Drive.Button(ab, "Report a Problem") != null && Drive.Button(ab, "See Known Issues") != null && Drive.Button(ab, "Copy Version Details") != null && Drive.Button(ab, "Buy Me a Coffee") != null, "the About page has the Support buttons (report, known issues, copy version details) and a donate button");
+                check(Links.Issues.StartsWith("https://github.com/Tusivo/Ledjoro/") && Links.Donate == "https://buymeacoffee.com/tusivo" && Links.VersionDetails().StartsWith("Ledjoro " + AboutScreen.Version) && !Links.VersionDetails().Contains(Engine.CompanyFolder()), "the support links are right and the version details hold nothing about the books");
                 await shot("62-about");
+                { var spA = Drive.All<ScrollPage>(form.Content).FirstOrDefault(); if (spA != null) { spA.ScrollPos = 100000; await Drive.Settle(300); await shot("62b-about-support"); spA.ScrollPos = 0; await Drive.Settle(200); } }
                 var more = Drive.All<Lbl>(ab).FirstOrDefault(l => l.Text == "Show the whole README"); if (more != null) { more.PerformClickLabel(); await Drive.Settle(300); }
                 check(Drive.All<Lbl>(ab).Any(l => l.Text.Length > 4000), "Show the whole README shows all of it");
                 await form.GoAsync("#/dashboard"); await Drive.Settle(300);

@@ -12,7 +12,7 @@ Double-click **`Ledjoro.exe`**. That is the whole install: one file, nothing els
 
 - **First run:** the app opens on a setup screen with the one-time setup token already filled in. Create the administrator, then **print or vault the sign-in sheet** (it shows your password and a one-time recovery key, in red, once).
 - **Everything stays beside the program.** Ledjoro writes only to a folder called `Ledjoro-Data` next to `Ledjoro.exe` (the books, settings, logs, and the unpacked engine). Each additional company lives in its own subfolder, `Ledjoro-Data\Companies\<name>`. Nothing goes to your user profile or the registry. To move to another computer, **close Ledjoro and copy `Ledjoro.exe` together with `Ledjoro-Data`** (copy, don't Cut: the folder's permissions belong to your Windows user). Back up and restore from *Settings - Data & backup* (encrypted; one button each).
-- **Private by construction:** nothing listens on your network, and there is no telemetry or outbound connection. See [SECURITY.md](SECURITY.md) for how the app and its hidden engine talk to each other.
+- **Private by construction:** nothing listens on your network, and there is no telemetry. The only outbound connection is the **Check for Updates** button on the About page, which talks to this project's GitHub releases when you click it (never automatically). The Support and Buy Me a Coffee buttons only open a web page in your browser when clicked. Updates are verified the download against GitHub's published SHA-256 and keeps your old `Ledjoro.exe` as a backup next to the new one. See [SECURITY.md](SECURITY.md) for how the app and its hidden engine talk to each other.
 - **The books file is protected.** While Ledjoro runs it holds the file exclusively (other programs get "database is locked"), the folder's permissions are limited to your Windows user and the system, a read-only flag on the file is cleared automatically (it used to make every sign-in fail with a vague error), and at every start the file is checked for edits made outside Ledjoro, which are reported on screen. See [SECURITY.md](SECURITY.md) for what this can and cannot stop.
 - **One copy at a time:** launching it again brings the running window forward.
 - **Unsigned:** the exe is not code-signed, so Windows SmartScreen may warn the first time ("More info" then "Run anyway"). Compare `Ledjoro.exe.sha256` with the file, and sign it (Authenticode certificate) if you distribute it to others.
@@ -140,3 +140,9 @@ test/  core.test.js (ledger+converters), http.test.js (auth, CSRF, RBAC, headers
 
 ## License
 AGPL-3.0-or-later (see `LICENSE`): anyone running a modified hosted version must share their changes. Change it before publishing if you prefer MIT/Apache.
+
+## Support the project
+
+Found a problem? Use **About, Support, Report a Problem** in the program, or open an [issue](https://github.com/Tusivo/Ledjoro/issues). Issues are public, so never paste your books or passwords.
+
+Ledjoro is free and made by one person. If it is useful to you, you can [buy me a coffee](https://buymeacoffee.com/tusivo). Donations change nothing about the program: every feature is there for everyone.

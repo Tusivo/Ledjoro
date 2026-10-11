@@ -111,7 +111,7 @@ namespace Ledjoro
     /// <summary>Sidebar navigation with section headings.</summary>
     public sealed class NavList : Control
     {
-        public class Entry { public string Key, Label; public bool Group; }
+        public class Entry { public string Key, Label; public bool Group, External; }   // External: opens something outside the program and is never the selected page
         public readonly List<Entry> Entries = new List<Entry>();
         string sel = ""; int hot = -1, scroll;
         public event Action<string> Picked;
@@ -123,11 +123,11 @@ namespace Ledjoro
         protected override void OnMouseWheel(MouseEventArgs e) { base.OnMouseWheel(e); scroll = Math.Max(0, Math.Min(Math.Max(0, Total() - Height), scroll - e.Delta / 2)); Invalidate(); }
         protected override void OnMouseMove(MouseEventArgs e) { base.OnMouseMove(e); int i = At(e.Y); if (i >= 0 && Entries[i].Group) i = -1; if (i != hot) { hot = i; Cursor = i >= 0 ? Cursors.Hand : Cursors.Default; Invalidate(); } }
         protected override void OnMouseLeave(EventArgs e) { base.OnMouseLeave(e); hot = -1; Invalidate(); }
-        protected override void OnMouseDown(MouseEventArgs e) { base.OnMouseDown(e); Focus(); int i = At(e.Y); if (i >= 0 && !Entries[i].Group) { sel = Entries[i].Key; Invalidate(); var h = Picked; if (h != null) h(sel); } }
+        protected override void OnMouseDown(MouseEventArgs e) { base.OnMouseDown(e); Focus(); int i = At(e.Y); if (i >= 0 && !Entries[i].Group) { var h = Picked; if (Entries[i].External) { if (h != null) h(Entries[i].Key); return; } sel = Entries[i].Key; Invalidate(); if (h != null) h(sel); } }
         protected override bool IsInputKey(Keys k) { return k == Keys.Up || k == Keys.Down || base.IsInputKey(k); }
         protected override void OnKeyDown(KeyEventArgs e)
         {
-            var items = Entries.Where(x => !x.Group).ToList(); int i = items.FindIndex(x => x.Key == sel);
+            var items = Entries.Where(x => !x.Group && !x.External).ToList(); int i = items.FindIndex(x => x.Key == sel);
             if (e.KeyCode == Keys.Down && i < items.Count - 1) { sel = items[i + 1].Key; Invalidate(); Picked?.Invoke(sel); e.Handled = true; }
             if (e.KeyCode == Keys.Up && i > 0) { sel = items[i - 1].Key; Invalidate(); Picked?.Invoke(sel); e.Handled = true; }
             base.OnKeyDown(e);
@@ -308,7 +308,7 @@ namespace Ledjoro
             content.Controls.Add(toast);
             Controls.Add(content); Controls.Add(top); Controls.Add(side); Controls.Add(auth);
             side.Visible = top.Visible = false; content.Visible = false;
-            nav.Picked += key => Go("#/" + key);
+            nav.Picked += key => { if (key == "support") Links.Open(Links.Donate); else Go("#/" + key); };
             Theme.Changed += () => { ApplyChrome(); };
             ApplyChrome();
         }
@@ -491,6 +491,7 @@ namespace Ledjoro
             grp("Data", App.Api.Can("import") ? new[] { new[] { "import", "Import & Convert" }, new[] { "quickbooks", "QuickBooks Sync" } } : new string[0][]);
             grp("Admin", new[] { new[] { "settings", "Settings" }, new[] { "about", "About" } });
             nav.Entries.RemoveAll(e => e.Group && nav.Entries.IndexOf(e) == nav.Entries.Count - 1 || (e.Group && e.Label == "Data" && !App.Api.Can("import")));
+            nav.Entries.Add(new NavList.Entry { Key = "support", Label = "Support Ledjoro", External = true });
             nav.Invalidate(); Theme.Refresh(this); PerformLayout();
             Go(currentHash.Length > 0 ? currentHash : "#/dashboard");
         }
