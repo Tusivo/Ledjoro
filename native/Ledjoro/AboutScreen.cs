@@ -159,7 +159,7 @@ namespace Ledjoro
             row.Add(Ui.B("See Known Issues", BK.Normal, () => Links.Open(Links.Issues)));
             row.Add(Ui.B("Request a Feature", BK.Normal, () => Links.Email()));
             row.Add(Ui.B("Copy Version Details", BK.Normal, () => { try { Clipboard.SetText(Links.VersionDetails()); App.Toast("Version details copied. Paste them into your report."); } catch (Exception) { App.Toast("Could not copy. Select and copy the version above by hand.", true); } }));
-            c.Add(row, Theme.Px(4));
+            c.Add(row, Theme.Px(22));   // room before the donation paragraph
             c.Add(new Lbl("Ledjoro is free and made by one person. If it saves you time or money, you can support its development. It changes nothing about the program: every feature is there for everyone.", LS.Normal, true), Theme.Px(14));
             var give = new Flow { Fill = Pnl.K.Surface, HGap = Theme.Px(12) };
             give.Add(Ui.B("Buy Me a Coffee", BK.Normal, () => Links.Open(Links.Donate)));
