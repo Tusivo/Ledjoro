@@ -6,3 +6,13 @@ node_modules/
 *.db-shm
 dist/
 demo-data/
+
+# Build output and programs: the finished Ledjoro.exe is attached to GitHub Releases by hand, never committed
+bin/
+obj/
+*.exe
+*.dll
+*.pdb
+*.exe.sha256
+Ledjoro-Data/
+Personal.CSV
