@@ -84,7 +84,7 @@ namespace Ledjoro
         async Task LoadHistory()
         {
             var h = await A.Get("api/reconcile/history");
-            past.Controls.Clear();
+            past.ClearItems();
             var live = h.Items.Where(x => x["undone"].Long == 0).ToList();
             if (live.Count == 0) { page.PerformLayout(); return; }
             past.Add(new Lbl("Past reconciliations", LS.H3));

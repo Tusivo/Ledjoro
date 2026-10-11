@@ -195,7 +195,13 @@ namespace Ledjoro
                 check(excerpt != null && !excerpt.Text.Contains("**") && !excerpt.Text.Contains("](") && !excerpt.Text.Contains("`"), "the About page shows a readable excerpt of the README (no markdown marks)");
                 check(excerpt != null && excerpt.Text.EndsWith("\u2026") && Drive.All<Lbl>(ab).Any(l => l.Text == "Show the whole README"), "the excerpt is cut at a paragraph and the whole README is one click away");
                 check(Drive.Button(ab, "Check for Updates") != null, "the About page has a Check for Updates button");
-                check(Drive.Button(ab, "Report a Problem") != null && Drive.Button(ab, "See Known Issues") != null && Drive.Button(ab, "Copy Version Details") != null && Drive.Button(ab, "Buy Me a Coffee") != null, "the About page has the Support buttons (report, known issues, copy version details) and a donate button");
+                {   // clicking it again and again must not make the Updates card grow
+                    var upBtn = Drive.Button(ab, "Check for Updates"); var upCard = upBtn.Parent.Parent; int h1 = 0, h5 = 0;
+                    for (int n = 1; n <= 5; n++) { upBtn.PerformClick(); await Drive.Settle(400); if (n == 1) h1 = upCard.Height; if (n == 5) h5 = upCard.Height; }
+                    check(h1 > 0 && h1 == h5 && Drive.All<Notice>(upCard).Count() == 1, "pressing Check for Updates five times leaves the card the same size (" + h1 + " then " + h5 + ")");
+                }
+                check(Drive.Button(ab, "Report a Problem") != null && Drive.Button(ab, "See Known Issues") != null && Drive.Button(ab, "Copy Version Details") != null && Drive.Button(ab, "Buy Me a Coffee") != null && Drive.Button(ab, "Request a Feature") != null, "the About page has the Support buttons (report, known issues, copy version details, request a feature) and a donate button");
+                check(Links.FeatureMailto().StartsWith("mailto:info@tusivo.com?subject=Ledjoro%20feature%20request&body=") && !Links.FeatureMailto().Contains(" "), "the feature-request email is addressed to info@tusivo.com with a subject and no raw spaces");
                 check(Links.Issues.StartsWith("https://github.com/Tusivo/Ledjoro/") && Links.Donate == "https://buymeacoffee.com/tusivo" && Links.VersionDetails().StartsWith("Ledjoro " + AboutScreen.Version) && !Links.VersionDetails().Contains(Engine.CompanyFolder()), "the support links are right and the version details hold nothing about the books");
                 await shot("62-about");
                 { var spA = Drive.All<ScrollPage>(form.Content).FirstOrDefault(); if (spA != null) { spA.ScrollPos = 100000; await Drive.Settle(300); await shot("62b-about-support"); spA.ScrollPos = 0; await Drive.Settle(200); } }

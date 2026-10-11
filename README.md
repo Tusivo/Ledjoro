@@ -185,4 +185,6 @@ AGPL-3.0-or-later (see `LICENSE`): anyone running a modified hosted version must
 
 Found a problem? Use **About, Support, Report a Problem** in the program, or open an [issue](https://github.com/Tusivo/Ledjoro/issues). Issues are public, so never paste your books or passwords.
 
+Have an idea for a feature? Use **About, Support, Request a Feature**, or email [info@tusivo.com](mailto:info@tusivo.com). Please describe what you want to do and why; do not send your books, account numbers or passwords.
+
 Ledjoro is free and made by one person. If it is useful to you, you can [buy me a coffee](https://buymeacoffee.com/tusivo). Donations change nothing about the program: every feature is there for everyone.

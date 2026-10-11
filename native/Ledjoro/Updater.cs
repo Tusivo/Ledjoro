@@ -104,6 +104,7 @@ namespace Ledjoro
         /// <summary>Null when this is already the newest published version.</summary>
         public static async Task<Release> Check(string current)
         {
+            if (App.SelfTesting) return null;   // the self-test never goes to the internet
             using (var c = Client(20))
             {
                 var resp = await c.GetAsync("https://api.github.com/repos/" + Repo + "/releases?per_page=30");

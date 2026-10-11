@@ -12,7 +12,25 @@ namespace Ledjoro
     /// <summary>The few web addresses Ledjoro can open (only when a button is clicked), and the text people can paste into a problem report.</summary>
     static class Links
     {
-        public const string Issues = "https://github.com/Tusivo/Ledjoro/issues", NewIssue = "https://github.com/Tusivo/Ledjoro/issues/new/choose", Donate = "https://buymeacoffee.com/tusivo";
+        public const string Issues = "https://github.com/Tusivo/Ledjoro/issues", NewIssue = "https://github.com/Tusivo/Ledjoro/issues/new/choose", Donate = "https://buymeacoffee.com/tusivo", ContactEmail = "info@tusivo.com";
+
+        /// <summary>A new email to the author about a feature idea, with a subject and a short reminder already written.</summary>
+        public static string FeatureMailto()
+        {
+            string body = "What would you like Ledjoro to do, and how would it help your business?\r\n\r\n\r\n(Please do not include your books, account numbers or passwords.)\r\n\r\n" + AboutScreen.Version;
+            return "mailto:" + ContactEmail + "?subject=" + Uri.EscapeDataString("Ledjoro feature request") + "&body=" + Uri.EscapeDataString(body);
+        }
+
+        public static void Email()
+        {
+            if (App.SelfTesting) return;
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(FeatureMailto()) { UseShellExecute = true }); }
+            catch (Exception)
+            {
+                try { Clipboard.SetText(ContactEmail); } catch (Exception) { }
+                Msg.Info("No email program opened", "Windows did not open an email program. You can write to " + ContactEmail + " from any email account; the address has been copied so you can paste it.", true);
+            }
+        }
 
         public static void Open(string url)
         {
@@ -90,7 +108,7 @@ namespace Ledjoro
             upd.Add(new Lbl("Updates", LS.H3));
             upd.Add(new Lbl("Ledjoro looks for a newer version only when you click the button below. It contacts GitHub (github.com/" + Updater.Repo + ") and tells it nothing about you or your books. A new version is checked against the fingerprint GitHub published for it before it is installed, and your current Ledjoro.exe is kept as a backup in the same folder.", LS.Muted, true), Theme.Px(2));
             var result = new Stack { Fill = Pnl.K.Surface, Gap = Theme.Px(8) };
-            Action<Control, Control> show = (a, b) => { result.Controls.Clear(); result.Add(a); if (b != null) result.Add(b); Vx.Relayout(upd); page.PerformLayout(); };
+            Action<Control, Control> show = (a, b) => { result.ClearItems(); result.Add(a); if (b != null) result.Add(b); Vx.Relayout(upd); page.PerformLayout(); };
             Btn check = null;
             Func<Updater.Release, Task> install = async rel =>
             {
@@ -134,11 +152,12 @@ namespace Ledjoro
         {
             var c = new Card(); c.Padding = new Padding(Theme.Px(24)); c.Gap = Theme.Px(10);
             c.Add(new Lbl("Support", LS.H3));
-            c.Add(new Lbl("Found a problem, or stuck on something? Reports are made on GitHub, where the answer helps the next person too.", LS.Normal, true), Theme.Px(2));
+            c.Add(new Lbl("Found a problem, or stuck on something? Reports are made on GitHub, where the answer helps the next person too. Have an idea for something Ledjoro should do? Use Request a Feature to email " + Links.ContactEmail + ".", LS.Normal, true), Theme.Px(2));
             c.Add(new Notice(NK.Warn, "Reports on GitHub are public. Never paste your books, account numbers, passwords, recovery keys or backup files. Describe what happened instead."), Theme.Px(4));
             var row = new Flow { Fill = Pnl.K.Surface, HGap = Theme.Px(12) };
             row.Add(Ui.B("Report a Problem", BK.Primary, () => Links.Open(Links.NewIssue)));
             row.Add(Ui.B("See Known Issues", BK.Normal, () => Links.Open(Links.Issues)));
+            row.Add(Ui.B("Request a Feature", BK.Normal, () => Links.Email()));
             row.Add(Ui.B("Copy Version Details", BK.Normal, () => { try { Clipboard.SetText(Links.VersionDetails()); App.Toast("Version details copied. Paste them into your report."); } catch (Exception) { App.Toast("Could not copy. Select and copy the version above by hand.", true); } }));
             c.Add(row, Theme.Px(4));
             c.Add(new Lbl("Ledjoro is free and made by one person. If it saves you time or money, you can support its development. It changes nothing about the program: every feature is there for everyone.", LS.Normal, true), Theme.Px(14));
