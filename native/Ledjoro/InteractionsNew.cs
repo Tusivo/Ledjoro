@@ -44,6 +44,22 @@ namespace Ledjoro
                 await shot("49-import-converter-link"); string was0 = Theme.Name; foreach (var tn in new[] { "light", "night", "dark" }) { Theme.Use(tn); await Drive.Settle(400); await shot("49-import-converter-" + tn); } Theme.Use(was0); await Drive.Settle(300);
             }
 
+            // ---- README pictures (only when LEDJORO_README_SHOTS=1): clean scenes of the demo company, window only, saved as readme-*.png -----
+            if (Environment.GetEnvironmentVariable("LEDJORO_README_SHOTS") == "1")
+            {
+                string was = Theme.Name;
+                Theme.Use("light"); await Drive.Settle(400);
+                await form.GoAsync("#/dashboard"); await Drive.Settle(1200); await shot("readme-dashboard-light");
+                await form.GoAsync("#/invoices"); await Drive.Settle(900); await shot("readme-invoices");
+                await form.GoAsync("#/reports/profit-loss"); await Drive.Settle(900); await shot("readme-profit-loss");
+                await form.GoAsync("#/banking"); await Drive.Settle(900); await shot("readme-banking");
+                await form.GoAsync("#/quickbooks"); await Drive.Settle(7000); await shot("readme-quickbooks");
+                Theme.Use("night"); await Drive.Settle(500);
+                await form.GoAsync("#/dashboard"); await Drive.Settle(1200); await shot("readme-dashboard-night");
+                await form.GoAsync("#/reports/balance-sheet"); await Drive.Settle(900); await shot("readme-balance-sheet-night");
+                Theme.Use(was); await Drive.Settle(400);
+            }
+
             // ---- About ---------------------------------------------------------------------------------------------------
             {
                 check(System.Text.RegularExpressions.Regex.IsMatch(AboutScreen.Version, @"^\d+\.\d+\.\d+(-[a-z]+\.\d+)?$"), "the program knows its version number (" + AboutScreen.Version + ")");

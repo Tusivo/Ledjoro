@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -15,6 +16,9 @@ namespace Ledjoro
     /// </summary>
     static class SelfTest
     {
+        [StructLayout(LayoutKind.Sequential)] struct RECT { public int L, T, R, B; }
+        [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out RECT rect, int size);
+
         public static async Task Run(MainForm form, string dir)
         {
             Directory.CreateDirectory(dir);
@@ -27,7 +31,12 @@ namespace Ledjoro
                 try
                 {
                     form.Activate(); form.BringToFront(); await Task.Delay(120); Application.DoEvents();
-                    var r = form.Bounds; using (var bmp = new Bitmap(r.Width, r.Height)) using (var g = Graphics.FromImage(bmp)) { g.CopyFromScreen(r.Location, Point.Empty, r.Size); if (IsBlack(bmp)) form.DrawToBitmap(bmp, new Rectangle(0, 0, r.Width, r.Height)); bmp.Save(Path.Combine(dir, name + ".png")); }   // a locked or switched-off display captures as black: draw the window itself instead
+                    var r = form.Bounds;
+                    if (Environment.GetEnvironmentVariable("LEDJORO_SHOT_WINDOW_ONLY") == "1")
+                    {   // just the window as the person sees it: no invisible resize border, nothing from the desktop around it
+                        RECT fr; if (DwmGetWindowAttribute(form.Handle, 9, out fr, Marshal.SizeOf(typeof(RECT))) == 0) r = Rectangle.FromLTRB(fr.L, fr.T, fr.R, fr.B);
+                    }
+                    using (var bmp = new Bitmap(r.Width, r.Height)) using (var g = Graphics.FromImage(bmp)) { g.CopyFromScreen(r.Location, Point.Empty, r.Size); if (IsBlack(bmp)) form.DrawToBitmap(bmp, new Rectangle(0, 0, r.Width, r.Height)); bmp.Save(Path.Combine(dir, name + ".png")); }   // a locked or switched-off display captures as black: draw the window itself instead
                 }
                 catch (Exception e) { note("  screenshot failed: " + e.Message); }
             };
@@ -81,7 +90,12 @@ namespace Ledjoro
                     says("engine stopped, with the engine's own reason", Say.EngineStopped("2026-10-09T00:00:00.000Z problem: The books file is open in another program (or another copy of Ledjoro). Close it and start Ledjoro again."), "Why: The books file is open in another program");
                     says("engine slow", Say.EngineStopped("", true), "did not finish starting");
                 }
-                form.Size = new Size(Theme.Px(1320), Theme.Px(860)); form.Location = new Point(10, 10); Application.DoEvents();
+                form.Size = new Size(Theme.Px(1320), Theme.Px(860)); form.Location = new Point(10, 10);
+                {   // LEDJORO_SELFTEST_SIZE=1920x1080 makes the pictures the size of the real window (used for the README screenshots)
+                    var sz = (Environment.GetEnvironmentVariable("LEDJORO_SELFTEST_SIZE") ?? "").Split('x'); int sw, sh;
+                    if (sz.Length == 2 && int.TryParse(sz[0], out sw) && int.TryParse(sz[1], out sh)) form.Size = new Size(sw, sh);
+                }
+                Application.DoEvents();
                 await App.Api.RefreshSession();
                 note("setup required: " + App.Api.SetupRequired);
                 if (App.Api.SetupRequired)

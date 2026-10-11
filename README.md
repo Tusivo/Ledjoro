@@ -8,6 +8,9 @@ On that page, open the newest release and download **Ledjoro.exe** under **Asset
 
 > **This is a beta (v0.9.0-beta.1).** It works and has been tested a great deal, but it has not yet been used on many real companies or had an independent security review. Keep your own backups, and have an accountant look over your books before relying on them. See [SECURITY.md](SECURITY.md) and [LEGAL.md](LEGAL.md).
 
+![Ledjoro dashboard showing cash in bank, what customers owe, and what needs attention](docs/screenshots/dashboard.png)
+*The dashboard: cash, what you are owed, what you owe, and what needs a look. (Sample company.)*
+
 ## Get started in three steps
 
 1. **Download** `Ledjoro.exe` from the [releases page](https://github.com/Tusivo/Ledjoro/releases) and save it in a folder you will remember (for example `C:\Ledjoro`). Ledjoro keeps your books in a folder called `Ledjoro-Data` right beside it, so choose somewhere you can write to, not Program Files.
@@ -51,6 +54,9 @@ The **Theme** drop-down in the top-right corner (also on the sign-in screen) off
 
 The theme is **Light** until you choose another; the choice is saved in `Ledjoro-Data\shell.json`, and text added to that file by hand does not reset it.
 
+![A balance sheet in Ledjoro's Night theme](docs/screenshots/night-theme-balance-sheet.png)
+*A balance sheet in the Night theme. Light and Dark are there too.*
+
 ## What it does today
 
 | Area | Features |
@@ -83,6 +89,15 @@ The theme is **Light** until you choose another; the choice is saved in `Ledjoro
 
 See [docs/FEATURE-MAP.md](docs/FEATURE-MAP.md) for what is done, partial, planned, or deliberately out of scope compared with the QuickBooks Online Advanced research.
 
+![Open invoices list with overdue invoices marked](docs/screenshots/invoices.png)
+*Invoices: who owes you, what is overdue, and what is still open.*
+
+![Bank transactions waiting for review with a category chooser](docs/screenshots/bank-transactions.png)
+*Bank transactions: import a statement, and Ledjoro offers a category for each line.*
+
+![Profit and Loss report with income, cost of goods sold and expenses](docs/screenshots/profit-and-loss.png)
+*Reports: profit and loss, balance sheet, trial balance, aging, general ledger and cash forecast.*
+
 ## Converting from QuickBooks
 
 **In the app:** *Import & convert* → choose file → *Preview* → *Import now*. Nothing is written until you confirm; re-importing the same file is safe.
@@ -104,6 +119,9 @@ Recommended migration path from QuickBooks:
 
 Not supported on purpose: proprietary `.QBW` / `.QBB` company files (undocumented; reverse engineering them is a legal risk — see LEGAL.md).
 Tax IDs/SSNs are never imported (data minimisation). Format details: [docs/FORMATS.md](docs/FORMATS.md). Sample files in `samples/` are synthetic.
+
+![QuickBooks Sync page explaining how to connect to QuickBooks Desktop](docs/screenshots/quickbooks-sync.png)
+*QuickBooks Sync: copy your QuickBooks Desktop data across, read-only, after a preview.*
 
 ## For developers: building from source
 

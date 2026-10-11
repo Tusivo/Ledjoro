@@ -62,6 +62,8 @@ namespace Ledjoro
                 if (line.TrimStart().StartsWith("|")) continue;                       // tables are not readable as plain text
                 line = Regex.Replace(line, @"^\s{0,3}#{1,6}\s*", "");                 // headings
                 line = Regex.Replace(line, @"^\s*>\s?", "");                          // quotes
+                if (Regex.IsMatch(line, @"^\s*!\[[^\]]*\]\([^)]*\)\s*$")) continue;                    // pictures are for the web page, not for this window
+                if (Regex.IsMatch(line.Trim(), @"^\*[^*].*[^*]\*$")) continue;                                             // and so are their captions
                 line = Regex.Replace(line, @"\[([^\]]+)\]\([^)]+\)", "$1");           // links keep their words, lose their addresses
                 line = line.Replace("**", "").Replace("`", "");
                 line = Regex.Replace(line, @"^(\s*)[-*]\s+", "$1•  ");           // bullets
