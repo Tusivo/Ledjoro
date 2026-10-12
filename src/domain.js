@@ -139,6 +139,28 @@ function createItem(db, ctx, b) {
   }
 }
 
+function updateItem(db, ctx, id, b) {
+  const it = db.prepare('SELECT * FROM items WHERE id=?').get(id);
+  if (!it) throw new HttpError(404, 'That product or service could not be found. It may have been removed; refresh the list.');
+  const name = b.name !== undefined ? vStr(b.name, 'name', { required: true, max: 150 }) : it.name;
+  const kind = b.kind !== undefined ? vEnum(b.kind, 'kind', ['service', 'product', 'nonstock']) : it.kind;
+  const inc = b.income_account_id !== undefined ? (b.income_account_id ? vInt(b.income_account_id, 'income_account_id') : null) : it.income_account_id;
+  const exp = b.expense_account_id !== undefined ? (b.expense_account_id ? vInt(b.expense_account_id, 'expense_account_id') : null) : it.expense_account_id;
+  for (const a of [inc, exp]) if (a && !db.prepare('SELECT 1 FROM accounts WHERE id=?').get(a)) throw bad('One of the accounts chosen does not exist any more. Pick the account again from the list.');
+  const price = b.unit_price_cents !== undefined ? vInt(b.unit_price_cents, 'unit_price_cents', { min: 0, max: 1e12 }) : it.unit_price_cents;
+  const desc = b.description !== undefined ? vStr(b.description, 'description', { max: 300 }) : it.description;
+  const taxable = b.taxable !== undefined ? vBool(b.taxable) : it.taxable;
+  const active = b.active !== undefined ? vBool(b.active) : it.active;
+  try {
+    db.prepare('UPDATE items SET name=?, kind=?, description=?, unit_price_cents=?, income_account_id=?, expense_account_id=?, taxable=?, active=? WHERE id=?')
+      .run(name, kind, desc, price, inc, exp, taxable, active, id);
+  } catch (e) {
+    if (/UNIQUE/.test(e.message)) throw bad('You already have a product or service with that name. Choose a different name.');
+    throw e;
+  }
+  audit(db, ctx, 'item.update', 'item', id, name);
+}
+
 // ---------------- documents (invoices & bills) ----------------
 const lineAmount = (qtyMilli, unit) => {
   const v = Math.round((qtyMilli * unit) / 1000);
@@ -205,6 +227,13 @@ function createDocument(db, ctx, b) {
     const insTax = db.prepare('INSERT INTO document_tax(document_id,rate_id,rate_milli,taxable_cents,tax_cents) VALUES (?,?,?,?,?)');
     for (const p of taxed.parts) insTax.run(docId, p.rate_id, p.rate_milli, p.taxable_cents, p.tax_cents);
     audit(db, ctx, `${kind}.create`, kind, docId, `${number} total ${total}${taxCents ? ` (sales tax ${taxCents})` : ''}`);
+    if (b.replaces_id) {   // "correct this invoice": the old one is voided in the same step, so there is never a half-done correction
+      const old = db.prepare('SELECT * FROM documents WHERE id=?').get(vInt(b.replaces_id, 'replaces_id'));
+      if (!old || old.kind !== kind) throw bad('The document being replaced could not be found.');
+      if (old.status !== 'open' || old.paid_cents > 0) throw bad(`${old.number} can no longer be replaced because it has payments on it or is already voided. Void the payments first, or enter a new ${kind} instead.`);
+      voidDocument(db, ctx, old.id);
+      db.prepare('UPDATE documents SET memo=? WHERE id=?').run(((`Replaces ${old.number}. ` + (vStr(b.memo, 'memo', { max: 500 }) || '')).trim()).slice(0, 500), docId);
+    }
     return docId;
   });
 }
@@ -219,6 +248,7 @@ function getDocument(db, id) {
   d.lines = db.prepare('SELECT l.*, a.name AS account_name FROM document_lines l JOIN accounts a ON a.id=l.account_id WHERE document_id=?').all(id);
   d.tax = db.prepare('SELECT dt.rate_id, r.name, r.agency, dt.rate_milli, dt.taxable_cents, dt.tax_cents FROM document_tax dt JOIN tax_rates r ON r.id=dt.rate_id WHERE dt.document_id=? ORDER BY r.name').all(id);
   d.subtotal_cents = d.total_cents - d.tax_cents;
+  d.credits = db.prepare('SELECT a.id, a.amount_cents, a.credit_id, c.number, a.applied_on FROM credit_applications a JOIN credit_memos c ON c.id=a.credit_id WHERE a.document_id=? ORDER BY a.id').all(id);
   d.payments = db.prepare(`SELECT pa.amount_cents, p.id AS payment_id, p.pay_date, p.method, p.ref, p.voided FROM payment_applications pa JOIN payments p ON p.id=pa.payment_id WHERE pa.document_id=?`).all(id);
   return d;
 }
@@ -379,7 +409,7 @@ function applyRules(db, ctx) {
 }
 
 module.exports = {
-  TYPE_FOR_SUBTYPE, listAccounts, createAccount, updateAccount, listContacts, createContact, updateContact, listItems, createItem,
+  TYPE_FOR_SUBTYPE, listAccounts, createAccount, updateAccount, listContacts, createContact, updateContact, listItems, createItem, updateItem,
   nextNumber, createDocument, listDocuments, getDocument, voidDocument, createPayment, voidPayment, createJournal, listJournal, getEntry,
   addBankTransactions, listBankTransactions, categorizeBank, excludeBank, createRule, listRules, applyRules,
 };

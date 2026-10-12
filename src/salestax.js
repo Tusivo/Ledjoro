@@ -162,9 +162,36 @@ function worksheet(db, q) {
     if (ex) { const e = exempt.get(d.contact_id) || { customer: d.customer, note: d.tax_exempt_note, sales_cents: 0 }; e.sales_cents += ex; exempt.set(d.contact_id, e); }
   }
 
-  const jurisdictions = db.prepare(`SELECT dt.rate_id, r.name, r.agency, dt.rate_milli, SUM(dt.taxable_cents) AS taxable_cents, SUM(dt.tax_cents) AS tax_cents
+  // credit memos in the period count against sales and against the tax of the jurisdictions they were charged in
+  const credits = db.prepare(`SELECT c.id, c.number, c.memo_date, c.total_cents, c.tax_cents, c.tax_rate_id, c.tax_exempt, k.id AS contact_id, k.name AS customer, k.tax_exempt_note,
+      (SELECT COALESCE(SUM(amount_cents),0) FROM credit_memo_lines WHERE credit_id=c.id) AS lines_cents,
+      (SELECT COALESCE(SUM(amount_cents),0) FROM credit_memo_lines WHERE credit_id=c.id AND taxable=1) AS taxable_lines_cents
+    FROM credit_memos c JOIN contacts k ON k.id=c.contact_id WHERE c.status<>'void' AND c.memo_date>=? AND c.memo_date<=? ORDER BY c.memo_date, c.number`).all(from, to);
+  const creditTotals = { count: credits.length, subtotal_cents: 0, tax_cents: 0 };
+  for (const c of credits) {
+    let taxable = 0, ex = 0;
+    if (c.tax_exempt) ex = c.taxable_lines_cents; else if (c.tax_rate_id) taxable = c.taxable_lines_cents;
+    const non = c.lines_cents - taxable - ex;
+    sales.total_cents -= c.lines_cents; sales.taxable_cents -= taxable; sales.exempt_cents -= ex; sales.nontaxable_cents -= non;
+    creditTotals.subtotal_cents += c.lines_cents; creditTotals.tax_cents += c.tax_cents;
+    invoices.push({ id: c.id, kind: 'credit', number: c.number, date: c.memo_date, customer: c.customer, subtotal_cents: -c.lines_cents, taxable_cents: -taxable, exempt_cents: -ex, nontaxable_cents: -non, tax_cents: -c.tax_cents });
+    if (ex) { const e = exempt.get(c.contact_id) || { customer: c.customer, note: c.tax_exempt_note, sales_cents: 0 }; e.sales_cents -= ex; exempt.set(c.contact_id, e); }
+  }
+  invoices.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.number.localeCompare(b.number)));
+
+  const juris = new Map();
+  const addJ = (r, sign) => {
+    const key = r.rate_id + '|' + r.rate_milli;
+    const j = juris.get(key) || { rate_id: r.rate_id, name: r.name, agency: r.agency, rate_milli: r.rate_milli, taxable_cents: 0, tax_cents: 0 };
+    j.taxable_cents += sign * r.taxable_cents; j.tax_cents += sign * r.tax_cents; juris.set(key, j);
+  };
+  for (const r of db.prepare(`SELECT dt.rate_id, r.name, r.agency, dt.rate_milli, SUM(dt.taxable_cents) AS taxable_cents, SUM(dt.tax_cents) AS tax_cents
     FROM document_tax dt JOIN documents d ON d.id=dt.document_id JOIN tax_rates r ON r.id=dt.rate_id
-    WHERE d.kind='invoice' AND d.status<>'void' AND d.doc_date>=? AND d.doc_date<=? GROUP BY dt.rate_id, dt.rate_milli ORDER BY r.agency, r.name, dt.rate_milli`).all(from, to);
+    WHERE d.kind='invoice' AND d.status<>'void' AND d.doc_date>=? AND d.doc_date<=? GROUP BY dt.rate_id, dt.rate_milli`).all(from, to)) addJ(r, 1);
+  for (const r of db.prepare(`SELECT t.rate_id, r.name, r.agency, t.rate_milli, SUM(t.taxable_cents) AS taxable_cents, SUM(t.tax_cents) AS tax_cents
+    FROM credit_memo_tax t JOIN credit_memos c ON c.id=t.credit_id JOIN tax_rates r ON r.id=t.rate_id
+    WHERE c.status<>'void' AND c.memo_date>=? AND c.memo_date<=? GROUP BY t.rate_id, t.rate_milli`).all(from, to)) addJ(r, -1);
+  const jurisdictions = [...juris.values()].sort((a, b) => (a.agency + a.name + a.rate_milli).localeCompare(b.agency + b.name + b.rate_milli));
   const collected = jurisdictions.reduce((s, j) => s + j.tax_cents, 0);
 
   // what the ledger says about the tax accounts, so the worksheet can be checked against the books
@@ -172,6 +199,8 @@ function worksheet(db, q) {
   const untracked = `l.entry_id NOT IN (
       SELECT entry_id FROM documents WHERE entry_id IS NOT NULL
       UNION SELECT reversal_id FROM entry_reversals WHERE entry_id IN (SELECT entry_id FROM documents WHERE entry_id IS NOT NULL)
+      UNION SELECT entry_id FROM credit_memos WHERE entry_id IS NOT NULL
+      UNION SELECT reversal_id FROM entry_reversals WHERE entry_id IN (SELECT entry_id FROM credit_memos WHERE entry_id IS NOT NULL)
       UNION SELECT entry_id FROM tax_remittances WHERE entry_id IS NOT NULL
       UNION SELECT reversal_id FROM entry_reversals WHERE entry_id IN (SELECT entry_id FROM tax_remittances WHERE entry_id IS NOT NULL))`;
   const net = (cond, ...args) => ids.length ? Number(db.prepare(`SELECT COALESCE(SUM(l.credit_cents - l.debit_cents),0) AS n FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id WHERE l.account_id IN (${ph}) AND ${cond}`).get(...ids, ...args).n) : 0;
@@ -181,7 +210,7 @@ function worksheet(db, q) {
   const remitted = remittances.reduce((s, r) => s + r.amount_cents, 0);
 
   return {
-    from, to, sales, jurisdictions, tax_collected_cents: collected,
+    from, to, sales, jurisdictions, tax_collected_cents: collected, credit_memos: creditTotals,
     ledger: { opening_cents: opening, closing_cents: closing, other_entries_cents: other, remitted_cents: remitted },
     remittances, exempt_customers: [...exempt.values()].sort((a, b) => a.customer.localeCompare(b.customer)), invoices,
     uses_sales_tax: jurisdictions.length > 0 || ids.length > 0 || Boolean(db.prepare('SELECT 1 FROM tax_rates LIMIT 1').get()),

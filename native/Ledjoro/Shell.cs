@@ -484,7 +484,7 @@ namespace Ledjoro
             nav.Entries.Clear();
             Action<string, string[][]> grp = (g, items) => { nav.Entries.Add(new NavList.Entry { Label = g, Group = true }); foreach (var i in items) nav.Entries.Add(new NavList.Entry { Key = i[0], Label = i[1] }); };
             grp("Overview", new[] { new[] { "dashboard", "Dashboard" } });
-            grp("Sales", new[] { new[] { "invoices", "Invoices" }, new[] { "customers", "Customers" }, new[] { "salestax", "Sales Tax" } });
+            grp("Sales", new[] { new[] { "invoices", "Invoices" }, new[] { "customers", "Customers" }, new[] { "credits", "Credit Memos" }, new[] { "items", "Items" }, new[] { "salestax", "Sales Tax" } });
             grp("Purchases", new[] { new[] { "bills", "Bills" }, new[] { "vendors", "Vendors" } });
             grp("Banking", new[] { new[] { "banking", "Bank Transactions" }, new[] { "reconcile", "Reconcile" } });
             grp("Accounting", new[] { new[] { "accounts", "Chart of Accounts" }, new[] { "journal", "Journal" }, new[] { "assets", "Fixed Assets" }, new[] { "reports", "Reports" }, new[] { "health", "Books Health" } });
@@ -514,6 +514,7 @@ namespace Ledjoro
         }
 
         // ---------- routing ----------
+        static readonly Regex CreditRe = new Regex(@"^#/credit/(\d+)$");
         static readonly Regex TaxRe = new Regex(@"^#/salestax(?:/(rates|worksheet|payments))?$");
         static readonly Regex DocRe = new Regex(@"^#/document/(\d+)$"), RepRe = new Regex(@"^#/reports(?:/([\w-]+))?$"), SetRe = new Regex(@"^#/settings(?:/(\w+))?$"), DocListRe = new Regex(@"^#/(invoices|bills)(?:/(open|paid|void|all))?$"), BankRe = new Regex(@"^#/banking(?:/(new|categorized|excluded|rules))?$");
 
@@ -544,7 +545,15 @@ namespace Ledjoro
             Screen s; string key; Match m;
             if (path == "#/dashboard") { s = new DashboardScreen(); key = "dashboard"; }
             else if ((m = DocListRe.Match(path)).Success) { bool inv = m.Groups[1].Value == "invoices"; s = new DocListScreen(inv ? "invoice" : "bill", m.Groups[2].Success ? m.Groups[2].Value : "open"); key = m.Groups[1].Value; }
-            else if (path == "#/invoices/new") { s = new DocFormScreen("invoice"); key = "invoices"; }
+            else if (path == "#/invoices/new")
+            {
+                var q = Regex.Match(hash, @"\?(copy|replace)=(\d+)$"); long qid = q.Success ? long.Parse(q.Groups[2].Value) : 0;
+                s = new DocFormScreen("invoice", q.Success && q.Groups[1].Value == "copy" ? qid : 0, q.Success && q.Groups[1].Value == "replace" ? qid : 0); key = "invoices";
+            }
+            else if (path == "#/credits") { s = new CreditListScreen(); key = "credits"; }
+            else if (path == "#/credits/new") { s = new DocFormScreen("credit"); key = "credits"; }
+            else if ((m = CreditRe.Match(path)).Success) { s = new CreditDetailScreen(int.Parse(m.Groups[1].Value)); key = "credits"; }
+            else if (path == "#/items") { s = new ItemsScreen(); key = "items"; }
             else if ((m = DocRe.Match(path)).Success) { s = new DocDetailScreen(int.Parse(m.Groups[1].Value)); key = "invoices"; }
             else if (path == "#/bills/new") { s = new DocFormScreen("bill"); key = "bills"; }
             else if (path == "#/customers") { s = new ContactsScreen("customer", wantNew); key = "customers"; }

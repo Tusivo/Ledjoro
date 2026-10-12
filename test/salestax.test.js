@@ -192,5 +192,5 @@ test('the upgrade to sales tax keeps existing data and can be run twice', () => 
   migrate8(db); migrate8(db);
   const c = db.prepare("SELECT tax_exempt, tax_rate_id, tax_exempt_note FROM contacts WHERE name='Old Customer'").get();
   assert.deepEqual({ ...c }, { tax_exempt: 0, tax_rate_id: null, tax_exempt_note: '' });
-  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 8);
+  assert.equal(db.prepare('PRAGMA user_version').get().user_version, 9);
 });

@@ -60,7 +60,7 @@ namespace Ledjoro
             var root = new Stack { Padding = new Padding(Theme.Px(24)), Gap = Theme.Px(12) };
             root.Add(new Header("Journal", "Every transaction is a balanced entry. Entries are never edited — to correct one, post a reversal.", A.Can("accounting.write") ? Ui.B("New Journal Entry", BK.Primary, () => Nav("#/journal/new")) : null));
             var grid = new Grid(); grid.Cols(Grid.Col("#", 0.6f), Grid.Col("Date", 1.1f), Grid.Col("Memo", 3.6f), Grid.Col("Source", 1.1f), Grid.Col(">Amount", 1.3f), Grid.Col("", 1f));
-            foreach (var e in rows.Items) grid.Add(e["id"].Long, e["id"].Str, Fmt.Show(e["entry_date"].Str), e["memo"].Str, e["source_type"].Str, Fmt.Money(e["total_cents"].Long), e["reversed_by"].IsNull ? "" : new GC("reversed", Theme.Warn));
+            foreach (var e in rows.Items) grid.Add(e["id"].Long, e["id"].Str, Fmt.Show(e["entry_date"].Str), e["memo"].Str, Fmt.Source(e["source_type"].Str), Fmt.Money(e["total_cents"].Long), e["reversed_by"].IsNull ? "" : new GC("Reversed", Theme.Warn));
             root.AddFill(grid);
             grid.Activated += tag => Ui.Run(() => Show((long)tag));
             SetBody(root);
@@ -70,12 +70,12 @@ namespace Ledjoro
         {
             var e = await A.Get("api/journal/" + id);
             var dlg = new Dlg("Entry #" + e["id"].Str, 640);
-            dlg.Body.Add(new Lbl(Fmt.Show(e["entry_date"].Str) + "   ·   " + e["memo"].Str + "   ·   source: " + e["source_type"].Str, LS.Muted, true));
+            dlg.Body.Add(new Lbl(Fmt.Show(e["entry_date"].Str) + "   ·   " + e["memo"].Str + "   ·   Source: " + Fmt.Source(e["source_type"].Str), LS.Muted, true));
             var g = new Grid { AutoHeight = true }; g.Cols(Grid.Col("Account", 3f), Grid.Col("Contact", 2f), Grid.Col(">Debit", 1.2f), Grid.Col(">Credit", 1.2f));
             foreach (var l in e["lines"].Items) g.Add(null, l["account_name"].Str, l["contact_name"].Str, l["debit_cents"].Long > 0 ? Fmt.Money(l["debit_cents"].Long) : "", l["credit_cents"].Long > 0 ? Fmt.Money(l["credit_cents"].Long) : "");
             g.ClearSelection(); dlg.Body.Add(g, null, g.PreferredHeight());
             string src = e["source_type"].Str;
-            if (A.Can("accounting.write") && !new[] { "invoice", "bill", "payment", "reversal" }.Contains(src))
+            if (A.Can("accounting.write") && !new[] { "invoice", "bill", "payment", "reversal", "credit_memo", "credit_refund", "salestax" }.Contains(src))
                 dlg.Primary("Reverse Entry", async () => { if (!Msg.Confirm("Reverse This Entry?", "A reversing entry will be posted.", "Reverse Entry", true)) return false; await A.Post("api/journal/" + id + "/reverse"); App.Toast("Reversal posted"); App.Main.Reload(); return true; }, BK.Danger);
             dlg.Cancel("Close");
             dlg.FixedBodyHeight = 0; dlg.Run();

@@ -9,6 +9,7 @@ const { audit, verifyAudit } = require('./audit');
 const D = require('./domain');
 const R = require('./reports');
 const ST = require('./salestax');
+const CR = require('./credits');
 const C = require('./convert');
 const { reverseEntry, checkLedgerIntegrity } = require('./ledger');
 const Backup = require('./backup');
@@ -259,6 +260,34 @@ function createApp(db, cfg) {
   });
 
   // ---------- accounting data ----------
+  // ---------- company profile (what is printed on invoices) ----------
+  const PROFILE = { street: 120, street2: 120, city: 80, state: 2, zip: 10, phone: 40, email: 120, website: 120, taxid: 40, note: 400 };
+  route('GET', '/api/profile', 'view', () => ({
+    name: getSetting(db, 'company_name'),
+    ...Object.fromEntries(Object.keys(PROFILE).map((k) => [k, getSetting(db, 'profile_' + k)])),
+    logo: getSetting(db, 'profile_logo'),
+  }));
+  route('PUT', '/api/profile', 'settings.manage', ({ b, ctx }) => {
+    const changed = [];
+    for (const [k, max] of Object.entries(PROFILE)) {
+      if (b[k] === undefined) continue;
+      let v = U.vStr(b[k], k, { max });
+      if (k === 'state') { v = v.toUpperCase(); if (v && !/^[A-Z]{2}$/.test(v)) throw U.bad('The state must be the two letters the post office uses, such as NH, CA or TX.'); }
+      if (k === 'zip' && v && !/^\d{5}(-\d{4})?$/.test(v)) throw U.bad('The ZIP code must be 5 digits (such as 03301) or 5+4 digits (such as 03301-1234).');
+      setSetting(db, 'profile_' + k, v); changed.push(k);
+    }
+    if (b.logo !== undefined) {
+      const v = b.logo === null ? '' : String(b.logo);
+      if (v) {
+        const raw = Buffer.from(v, 'base64');
+        if (raw.length < 200 || raw[0] !== 0xff || raw[1] !== 0xd8) throw U.bad('The logo has to be a JPEG picture. Choose the logo again from the Settings page.');
+        if (raw.length > 300 * 1024) throw U.bad('The logo picture is too large (over 300 KB). Choose a smaller picture.');
+      }
+      setSetting(db, 'profile_logo', v); changed.push('logo');
+    }
+    audit(db, ctx, 'profile.update', 'settings', '', changed.join(','));
+    return { ok: true };
+  });
   route('GET', '/api/dashboard', 'view', () => R.dashboard(db));
   route('GET', '/api/accounts', 'view', () => D.listAccounts(db));
   route('POST', '/api/accounts', 'accounting.write', ({ b, ctx }) => ({ id: D.createAccount(db, ctx, b) }));
@@ -284,6 +313,16 @@ function createApp(db, cfg) {
   route('GET', '/api/salestax/payments', 'view', () => ST.listRemittances(db));
   route('POST', '/api/salestax/payments', 'accounting.write', ({ b, ctx }) => ({ id: ST.createRemittance(db, ctx, b) }));
   route('POST', '/api/salestax/payments/:id/void', 'accounting.write', ({ params, ctx }) => (ST.voidRemittance(db, ctx, id(params.id)), { ok: true }));
+  route('PATCH', '/api/items/:id', 'view', ({ params, b, ctx, session }) => { A.requirePerm(session, 'sales.write'); D.updateItem(db, ctx, id(params.id), b); return { ok: true }; });
+  // ---------- credit memos ----------
+  route('GET', '/api/credits', 'view', ({ query }) => CR.listCredits(db, query.status ? U.vEnum(query.status, 'status', ['open', 'used', 'void']) : null));
+  route('GET', '/api/credits/:id', 'view', ({ params }) => CR.getCredit(db, id(params.id)));
+  route('POST', '/api/credits', 'sales.write', ({ b, ctx }) => ({ id: CR.createCredit(db, ctx, b) }));
+  route('POST', '/api/credits/:id/apply', 'sales.write', ({ params, b, ctx }) => ({ id: CR.applyCredit(db, ctx, id(params.id), b) }));
+  route('POST', '/api/credits/:id/refund', 'sales.write', ({ params, b, ctx }) => ({ id: CR.refundCredit(db, ctx, id(params.id), b) }));
+  route('POST', '/api/credits/:id/void', 'sales.write', ({ params, ctx }) => (CR.voidCredit(db, ctx, id(params.id)), { ok: true }));
+  route('POST', '/api/credits/applications/:id/remove', 'sales.write', ({ params, ctx }) => (CR.removeApplication(db, ctx, id(params.id)), { ok: true }));
+  route('POST', '/api/credits/refunds/:id/void', 'sales.write', ({ params, ctx }) => (CR.voidRefund(db, ctx, id(params.id)), { ok: true }));
   route('GET', '/api/documents', 'view', ({ query }) => D.listDocuments(db, U.vEnum(query.kind, 'kind', ['invoice', 'bill']), query.status ? U.vEnum(query.status, 'status', ['open', 'paid', 'void']) : null));
   route('GET', '/api/documents/:id', 'view', ({ params }) => D.getDocument(db, id(params.id)));
   route('POST', '/api/documents', 'view', ({ b, ctx, session }) => {
@@ -311,7 +350,7 @@ function createApp(db, cfg) {
     const rid = tx(db, () => {
       const e = db.prepare('SELECT source_type FROM journal_entries WHERE id=?').get(id(params.id));
       if (!e) throw new HttpError(404, 'That journal entry could not be found. It may have been removed; go back and refresh.');
-      if (['invoice', 'bill', 'payment'].includes(e.source_type)) throw bad('This entry was made by an invoice, bill or payment, so it cannot be reversed on its own. Void that invoice, bill or payment instead; that corrects the books properly.');
+      if (['invoice', 'bill', 'payment', 'credit_memo', 'credit_refund', 'salestax'].includes(e.source_type)) throw bad('This entry was made by an invoice, bill, credit memo, refund or payment, so it cannot be reversed on its own. Void that invoice, bill or payment instead; that corrects the books properly.');
       const r = reverseEntry(db, id(params.id), { date: U.vDate(b.date, 'date', false) || U.today(), userId: ctx.user.id });
       audit(db, ctx, 'journal.reverse', 'entry', params.id);
       return r;

@@ -9,6 +9,21 @@ namespace Ledjoro
     /// <summary>Self-test steps for reconciliation, matching, automatic backups and search.</summary>
     static class InteractionsNew
     {
+        /// <summary>True when the PDF text has a cross-reference table whose every entry points at its object.</summary>
+        static bool PdfStructureOk(string pdf)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(pdf, @"startxref\n(\d+)\n%%EOF"); if (!m.Success) return false;
+            int x = int.Parse(m.Groups[1].Value); if (x < 0 || x + 4 > pdf.Length || pdf.Substring(x, 4) != "xref") return false;
+            var h = System.Text.RegularExpressions.Regex.Match(pdf.Substring(x), @"^xref\n0 (\d+)\n"); if (!h.Success) return false;
+            int count = int.Parse(h.Groups[1].Value), pos = x + h.Length;
+            for (int i = 0; i < count; i++)
+            {
+                string entry = pdf.Substring(pos + i * 20, 20); if (i == 0) continue;
+                int off = int.Parse(entry.Substring(0, 10)); if (!pdf.Substring(off).StartsWith(i + " 0 obj")) return false;
+            }
+            return pdf.Contains("/Root 1 0 R");
+        }
+
         public static async Task Run(MainForm form, Action<string> note, Func<string, Task> shot, Action<bool, string> check)
         {
             var api = App.Api;
@@ -138,6 +153,125 @@ namespace Ledjoro
                 await form.GoAsync("#/dashboard"); await Drive.Settle(300);
             }
 
+            // ---- Items, invoice details and PDFs, credit memos, copy and correct ----------------------------------------------
+            {
+                var ivApi = App.Api;
+                // items
+                await form.GoAsync("#/items"); await Drive.Settle(500);
+                var ivItems = Drive.Find<ItemsScreen>(form.Content);
+                check(ivItems != null && Drive.Button(ivItems, "New Item") != null, "the Items page opens with a New Item button");
+                Drive.Button(ivItems, "New Item").Post(); var ivItemDlg = await Drive.WaitDialog();
+                check(ivItemDlg != null && Drive.All<Check>(ivItemDlg).Any(c => c.Text.StartsWith("Sales tax applies")), "New Item opens a window with a sales tax box");
+                if (ivItemDlg != null)
+                {
+                    Drive.Find<Input>(ivItemDlg, i => i.Cue == "Website design").Text = "Consulting hour"; Drive.Find<Input>(ivItemDlg, i => i.Cue == "0.00").Text = "150.00";
+                    Drive.All<Combo>(ivItemDlg).First(c => c.Items.Any(i => i.Value.StartsWith("Choose an income"))).Index = 1;
+                    Drive.All<Check>(ivItemDlg).First(c => c.Text.StartsWith("Sales tax applies")).Checked = false;
+                    await shot("80-item-dialog"); Drive.Button(ivItemDlg, "Save").PerformClick(); await Drive.WaitClosed(ivItemDlg);
+                }
+                var ivItemRows = await ivApi.Get("api/items"); var ivItem = ivItemRows.Items.FirstOrDefault(i => i["name"].Str == "Consulting hour");
+                check(ivItem != null && ivItem["unit_price_cents"].Long == 15000 && ivItem["taxable"].Long == 0 && ivItem["income_account_id"].Long > 0, "the item was saved with its price, income account and tax setting");
+                await form.GoAsync("#/items"); await Drive.Settle(400);
+                await shot("81-items");
+
+                // the details printed on invoices
+                await form.GoAsync("#/settings/company"); await Drive.Settle(500);
+                check(Drive.All<Lbl>(form.Content).Any(l => l.Text == "Printed on invoices") && Drive.Button(form.Content, "Choose Logo…") != null, "Settings has the Printed on invoices card with a logo chooser");
+                Drive.Find<Input>(form.Content, i => i.Cue == "Street address").Text = "12 Main Street"; Drive.Find<Input>(form.Content, i => i.Cue == "City").Text = "Concord";
+                Drive.Find<Input>(form.Content, i => i.Cue == "NH").Text = "NH"; Drive.Find<Input>(form.Content, i => i.Cue == "ZIP code").Text = "03301";
+                Drive.Find<Input>(form.Content, i => i.Cue == "Phone").Text = "603-555-0100"; Drive.Find<Input>(form.Content, i => i.Cue == "billing@example.com").Text = "billing@birchwood.example";
+                Drive.Find<Input>(form.Content, i => i.Cue.StartsWith("For example: Please pay")).Text = "Please pay within 30 days by check or bank transfer. Thank you for your business.";
+                await shot("82-invoice-details");
+                Drive.Button(form.Content, "Save Invoice Details").PerformClick(); await Drive.Settle(600);
+                var ivProfile = await ivApi.Get("api/profile");
+                check(ivProfile["street"].Str == "12 Main Street" && ivProfile["state"].Str == "NH" && ivProfile["note"].Str.StartsWith("Please pay"), "the invoice details were saved");
+                {   // a logo, made here as a small picture
+                    byte[] jpg; using (var bmp = new System.Drawing.Bitmap(160, 60)) using (var gr = System.Drawing.Graphics.FromImage(bmp)) using (var ms = new System.IO.MemoryStream())
+                    {
+                        gr.Clear(System.Drawing.Color.FromArgb(40, 90, 160)); gr.DrawString("Birchwood", new System.Drawing.Font("Segoe UI", 16, System.Drawing.FontStyle.Bold), System.Drawing.Brushes.White, 10, 14);
+                        bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg); jpg = ms.ToArray();
+                    }
+                    await ivApi.Put("api/profile", Json.O("logo", Convert.ToBase64String(jpg)));
+                }
+
+                // an invoice to print, with tax, and its PDF
+                var ivCust = (await ivApi.Get("api/contacts?kind=customer")).Items.First(c => c["name"].Str == "Tax Test Buyer");
+                var ivRates = await ivApi.Get("api/salestax/rates"); var ivCombo = ivRates["rates"].Items.First(r => r["name"].Str == "Springfield");
+                var ivSales = (await Lists.Accounts()).Items.First(a => a["name"].Str == "Sales")["id"].Long;
+                var ivInv = await ivApi.Post("api/documents", Json.O("kind", "invoice", "contact_id", ivCust["id"].Long, "doc_date", Fmt.Today(), "tax_rate_id", ivCombo["id"].Long, "memo", "Thank you for the quick payment last month.",
+                    "lines", new[] { Json.O("description", "Quarterly bookkeeping review and year-end preparation, including reconciliation of all bank and credit card accounts", "qty_milli", 1000, "unit_price_cents", 45000, "account_id", ivSales, "taxable", true),
+                                     Json.O("description", "Consulting hour", "qty_milli", 2500, "unit_price_cents", 15000, "account_id", ivSales, "taxable", false) }));
+                var ivDoc = await ivApi.Get("api/documents/" + ivInv["id"].Str); var ivProf = await ivApi.Get("api/profile");
+                var ivPdf = PdfActions.Make(ivDoc, false, ivProf, ivCust); string ivText = System.Text.Encoding.GetEncoding(28591).GetString(ivPdf);
+                check(ivText.StartsWith("%PDF-1.4") && ivText.TrimEnd().EndsWith("%%EOF") && ivText.Contains("/DCTDecode") && ivText.Contains("(INVOICE)") && ivText.Contains("(" + ivDoc["number"].Str + ")") && ivText.Contains("Birchwood Design Studio LLC"), "an invoice makes a PDF with its logo, company name, title and number");
+                check(PdfStructureOk(ivText), "the PDF's cross-reference table points at every object");
+                check(ivText.Contains("(Page 1 of 1)") && ivText.Contains("12 Main Street") && ivText.Contains("Balance due"), "the PDF has the company address, a balance due and a page number");
+                await form.GoAsync("#/document/" + ivInv["id"].Str); await Drive.Settle(600);
+                check(Drive.Button(form.Content, "Save as PDF") != null && Drive.Button(form.Content, "Email") != null && Drive.Button(form.Content, "Copy") != null && Drive.Button(form.Content, "Correct") != null, "an open invoice has Save as PDF, Email, Copy and Correct buttons");
+                Drive.Button(form.Content, "Save as PDF").Post(); await Drive.Settle(900);
+                check(PdfActions.LastPath.EndsWith(".pdf") && System.IO.File.Exists(PdfActions.LastPath) && System.IO.File.ReadAllBytes(PdfActions.LastPath).Length > 1500, "Save as PDF writes the file");
+                await shot("83-invoice-with-pdf-buttons");
+                {   // many lines: more than one page, every page numbered
+                    var many = new System.Collections.Generic.List<object>();
+                    for (int i = 1; i <= 45; i++) many.Add(Json.O("description", "Line " + i + " of a long invoice with a description that is a little longer than the others to test wrapping", "qty_milli", 1000, "unit_price_cents", 1000 + i, "account_id", ivSales));
+                    var big = await ivApi.Post("api/documents", Json.O("kind", "invoice", "contact_id", ivCust["id"].Long, "doc_date", Fmt.Today(), "lines", many));
+                    var bigDoc = await ivApi.Get("api/documents/" + big["id"].Str);
+                    string bigText = System.Text.Encoding.GetEncoding(28591).GetString(PdfActions.Make(bigDoc, false, ivProf, ivCust));
+                    check(bigText.Contains("(Page 2 of ") && !bigText.Contains("(Page 1 of 1)") && bigText.Contains("continued") && PdfStructureOk(bigText), "a long invoice runs onto further pages that are marked as continued and numbered");
+                }
+
+                // copy and correct
+                await form.GoAsync("#/invoices/new?copy=" + ivInv["id"].Str); await Drive.Settle(800);
+                check(Drive.All<Header>(form.Content).Any() && Drive.All<Lbl>(form.Content).Any(l => l.Text.StartsWith("New Invoice (copy of ")), "Copy opens a new invoice marked as a copy");
+                check(Drive.All<Input>(form.Content).Count(i => i.Text.StartsWith("Quarterly bookkeeping") || i.Text == "Consulting hour") == 2, "the copy starts with the original's lines");
+                await shot("84-invoice-copy");
+                await form.GoAsync("#/invoices/new?replace=" + ivInv["id"].Str); await Drive.Settle(800);
+                check(Drive.All<Notice>(form.Content).Any(n => n.Message.Contains("voids " + ivDoc["number"].Str)), "Correct warns that the original will be voided");
+                Drive.Find<Input>(form.Content, i => i.Text == "Consulting hour").Text = "Consulting hours (corrected)";
+                Drive.Button(form.Content, "Save").PerformClick();
+                bool ivSaved = await Drive.Until(() => form.CurrentHash.StartsWith("#/document/") && !form.CurrentHash.EndsWith("/" + ivInv["id"].Str));
+                check(ivSaved, "saving a corrected invoice opens the new one");
+                var ivOld = await ivApi.Get("api/documents/" + ivInv["id"].Str);
+                check(ivOld["status"].Str == "void", "the original invoice was voided in the same step");
+
+                // credit memos
+                await form.GoAsync("#/credits"); await Drive.Settle(500);
+                check(Drive.Button(form.Content, "New Credit Memo") != null, "the Credit Memos page opens with a New Credit Memo button");
+                await form.GoAsync("#/credits/new"); await Drive.Settle(700);
+                var ivCombos = Drive.All<Combo>(form.Content).ToList(); ivCombos[0].Value = ivCust["id"].Str; await Drive.Settle(150);
+                Drive.Field(form.Content, "Description").Text = "Returned item"; Drive.Find<Input>(form.Content, i => i.Cue == "0.00").Text = "50.00"; await Drive.Settle(200);
+                check(Drive.All<Lbl>(form.Content).Any(l => l.Text == "$53.25") || Drive.All<Lbl>(form.Content).Any(l => l.Text == "$50.00"), "the credit memo form shows its total");
+                await shot("85-credit-memo-form");
+                Drive.Button(form.Content, "Save").PerformClick();
+                bool ivCrSaved = await Drive.Until(() => form.CurrentHash.StartsWith("#/credit/")); check(ivCrSaved, "saving a credit memo opens it");
+                await Drive.Settle(600);
+                var ivCredits = await ivApi.Get("api/credits"); var ivCr = ivCredits[0];
+                check(Drive.Button(form.Content, "Apply to an Invoice") != null && Drive.Button(form.Content, "Refund") != null && Drive.Button(form.Content, "Save as PDF") != null && Drive.Button(form.Content, "Void") != null, "a credit memo has Apply, Refund, Save as PDF and Void");
+                await shot("86-credit-memo");
+                Drive.Button(form.Content, "Apply to an Invoice").Post(); var ivApplyDlg = await Drive.WaitDialog(); check(ivApplyDlg != null, "Apply to an Invoice opens a window");
+                if (ivApplyDlg != null) { Drive.Button(ivApplyDlg, "Apply Credit").PerformClick(); await Drive.WaitClosed(ivApplyDlg); }
+                await Drive.Settle(500);
+                var ivCrAfter = await ivApi.Get("api/credits/" + ivCr["id"].Str);
+                check(ivCrAfter["applied_cents"].Long > 0 && ivCrAfter["applications"].Count == 1, "applying the credit to an invoice recorded the application");
+                string ivCrText = System.Text.Encoding.GetEncoding(28591).GetString(PdfActions.Make(ivCrAfter, true, ivProf, ivCust));
+                check(ivCrText.Contains("(CREDIT MEMO)") && ivCrText.Contains("Credit remaining") && PdfStructureOk(ivCrText), "a credit memo makes a PDF too");
+                await form.GoAsync("#/dashboard"); await Drive.Settle(300);
+            }
+
+            // ---- words shown on screen start with a capital -----------------------------------------------------------------
+            {
+                check(Fmt.Cap("paid") == "Paid" && Fmt.Cap("applied") == "Applied" && Fmt.Cap("") == "" && Fmt.Source("import") == "Import" && Fmt.Source("credit_memo") == "Credit memo" && Fmt.Source("salestax") == "Sales tax payment" && Fmt.Source("manual") == "Manual", "statuses and journal sources are shown with a capital letter");
+                await form.GoAsync("#/journal"); await Drive.Settle(500);
+                var jgrid = Drive.All<Grid>(form.Content).FirstOrDefault();
+                var srcCells = jgrid == null ? new System.Collections.Generic.List<string>() : jgrid.Rows.Cast<DataGridViewRow>().Select(r => r.Cells[3].Value == null ? "" : r.Cells[3].Value.ToString()).Where(v => v.Length > 0).Distinct().ToList();
+                check(srcCells.Count > 0 && srcCells.All(v => char.IsUpper(v[0])), "the Journal lists each entry's source with a capital (" + string.Join(", ", srcCells.Take(6)) + ")");
+                await form.GoAsync("#/invoices/all"); await Drive.Settle(500);
+                var igrid = Drive.All<Grid>(form.Content).FirstOrDefault();
+                var stCells = igrid == null ? new System.Collections.Generic.List<string>() : igrid.Rows.Cast<DataGridViewRow>().Select(r => r.Cells[r.Cells.Count - 1].Value == null ? "" : r.Cells[r.Cells.Count - 1].Value.ToString()).Where(v => v.Length > 0).Distinct().ToList();
+                check(stCells.Count > 0 && stCells.All(v => char.IsUpper(v[0])), "the invoice list shows each status with a capital (" + string.Join(", ", stCells.Take(6)) + ")");
+                await form.GoAsync("#/dashboard"); await Drive.Settle(300);
+            }
+
             // ---- README pictures (only when LEDJORO_README_SHOTS=1): clean scenes of the demo company, window only, saved as readme-*.png -----
             // the themes alternate light, night, dark from one picture to the next
             if (Environment.GetEnvironmentVariable("LEDJORO_README_SHOTS") == "1")
@@ -166,7 +300,7 @@ namespace Ledjoro
             // ---- About ---------------------------------------------------------------------------------------------------
             {
                 check(System.Text.RegularExpressions.Regex.IsMatch(AboutScreen.Version, @"^\d+\.\d+\.\d+(-[a-z]+\.\d+)?$"), "the program knows its version number (" + AboutScreen.Version + ")");
-                check(AboutScreen.Version == "0.9.2-beta.1", "the version is 0.9.2-beta.1");
+                check(AboutScreen.Version == "0.10.0-beta.1", "the version is 0.10.0-beta.1");
                 check(Updater.Compare("0.9.0-beta.1", "v0.9.0-beta.2") < 0 && Updater.Compare("0.9.0-beta.2", "0.9.0") < 0 && Updater.Compare("0.9.0", "0.10.0") < 0 && Updater.Compare("v1.0.0", "1.0.0") == 0 && Updater.Compare("0.9.0-beta.10", "0.9.0-beta.9") > 0, "version numbers are put in the right order");
                 {
                     string dl = "https://github.com/" + Updater.Repo + "/releases/download/";

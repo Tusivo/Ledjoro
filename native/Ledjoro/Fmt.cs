@@ -103,6 +103,16 @@ namespace Ledjoro
         /// <summary>A date written the way this PC writes it, to show as an example.</summary>
         public static string Example { get { return new DateTime(2026, 3, 31).ToString(Pattern, CultureInfo.CurrentCulture); } }
         // ----- dates (always yyyy-MM-dd inside) -----
+        /// <summary>The first letter in capitals: "paid" becomes "Paid".</summary>
+        public static string Cap(string s) { return string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s.Substring(1); }
+
+        /// <summary>What made a journal entry, in words: "import" is "Import", "credit_memo" is "Credit memo".</summary>
+        public static string Source(string s)
+        {
+            if (s == "salestax") return "Sales tax payment";
+            return Cap((s ?? "").Replace('_', ' '));
+        }
+
         public static string Today() { return DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture); }
         public static bool TryDate(string s, out DateTime d)
         {

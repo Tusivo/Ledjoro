@@ -116,7 +116,7 @@ const DEFAULT_ACCOUNTS = [
   ['6200', 'Wages', 'expense', 'expense'], ['7000', 'Interest Expense', 'other_expense', 'other_expense'],
 ];
 
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 const MIGRATION_2 = `
 CREATE TABLE fixed_assets(
   id INTEGER PRIMARY KEY, name TEXT NOT NULL, cost_cents INTEGER NOT NULL CHECK(cost_cents > 0), salvage_cents INTEGER NOT NULL DEFAULT 0 CHECK(salvage_cents >= 0 AND salvage_cents < cost_cents),
@@ -155,6 +155,32 @@ function migrate8(db) {
     if (!db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${ddl}`);
   }
 }
+
+// v9: credit memos (money owed back to a customer), what has been applied to invoices, and refunds.
+const MIGRATION_9 = `
+CREATE TABLE IF NOT EXISTS credit_memos(
+  id INTEGER PRIMARY KEY, number TEXT NOT NULL UNIQUE, contact_id INTEGER NOT NULL REFERENCES contacts(id), memo_date TEXT NOT NULL, memo TEXT NOT NULL DEFAULT '',
+  total_cents INTEGER NOT NULL CHECK(total_cents > 0), tax_cents INTEGER NOT NULL DEFAULT 0, tax_rate_id INTEGER, tax_exempt INTEGER NOT NULL DEFAULT 0,
+  applied_cents INTEGER NOT NULL DEFAULT 0 CHECK(applied_cents >= 0), refunded_cents INTEGER NOT NULL DEFAULT 0 CHECK(refunded_cents >= 0),
+  status TEXT NOT NULL CHECK(status IN ('open','used','void')), entry_id INTEGER REFERENCES journal_entries(id),
+  created_by INTEGER REFERENCES users(id), created_at INTEGER NOT NULL, CHECK(applied_cents + refunded_cents <= total_cents));
+CREATE TABLE IF NOT EXISTS credit_memo_lines(
+  id INTEGER PRIMARY KEY, credit_id INTEGER NOT NULL REFERENCES credit_memos(id), item_id INTEGER REFERENCES items(id),
+  description TEXT NOT NULL DEFAULT '', qty_milli INTEGER NOT NULL, unit_price_cents INTEGER NOT NULL, amount_cents INTEGER NOT NULL,
+  account_id INTEGER NOT NULL REFERENCES accounts(id), taxable INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS credit_memo_tax(
+  id INTEGER PRIMARY KEY, credit_id INTEGER NOT NULL REFERENCES credit_memos(id), rate_id INTEGER NOT NULL REFERENCES tax_rates(id),
+  rate_milli INTEGER NOT NULL, taxable_cents INTEGER NOT NULL, tax_cents INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS credit_applications(
+  id INTEGER PRIMARY KEY, credit_id INTEGER NOT NULL REFERENCES credit_memos(id), document_id INTEGER NOT NULL REFERENCES documents(id),
+  amount_cents INTEGER NOT NULL CHECK(amount_cents > 0), applied_on TEXT NOT NULL, created_by INTEGER REFERENCES users(id), created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS credit_refunds(
+  id INTEGER PRIMARY KEY, credit_id INTEGER NOT NULL REFERENCES credit_memos(id), pay_date TEXT NOT NULL, amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+  account_id INTEGER NOT NULL REFERENCES accounts(id), method TEXT NOT NULL DEFAULT '', ref TEXT NOT NULL DEFAULT '',
+  entry_id INTEGER REFERENCES journal_entries(id), voided INTEGER NOT NULL DEFAULT 0, created_by INTEGER REFERENCES users(id), created_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS cm_contact ON credit_memos(contact_id);
+CREATE INDEX IF NOT EXISTS ca_doc ON credit_applications(document_id);
+`;
 
 const MIGRATION_7 = `
 CREATE TABLE IF NOT EXISTS watched_files(
@@ -260,7 +286,8 @@ function openDb(file, opts = {}) {
   if (db.prepare('PRAGMA user_version').get().user_version === 5) tx(db, () => { const have = new Set(db.prepare('PRAGMA table_info(contacts)').all().map((c) => c.name)); for (const stmt of MIGRATION_6.split(';').map((x) => x.trim()).filter(Boolean)) { const col = /ADD COLUMN (\w+)/.exec(stmt)[1]; if (!have.has(col)) db.exec(stmt); } db.exec('PRAGMA user_version = 6'); });
   if (db.prepare('PRAGMA user_version').get().user_version === 6) tx(db, () => { db.exec(MIGRATION_7); db.exec('PRAGMA user_version = 7'); });
   if (db.prepare('PRAGMA user_version').get().user_version === 7) tx(db, () => { migrate8(db); db.exec('PRAGMA user_version = 8'); });
-  if (cur > 8) throw new Error(`Database schema v${cur} is newer than this program supports`);
+  if (db.prepare('PRAGMA user_version').get().user_version === 8) tx(db, () => { db.exec(MIGRATION_9); db.exec('PRAGMA user_version = 9'); });
+  if (cur > 9) throw new Error(`Database schema v${cur} is newer than this program supports`);
   if (file !== ':memory:') {
     try { fs.chmodSync(file, 0o600); } catch { /* best effort on Windows */ }
   }
@@ -270,4 +297,4 @@ function openDb(file, opts = {}) {
 const getSetting = (db, k) => db.prepare('SELECT value FROM settings WHERE key=?').get(k)?.value ?? '';
 const setSetting = (db, k, v) => db.prepare('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(k, String(v));
 
-module.exports = { openDb, migrate8, purgeImportedDocuments, tx, getSetting, setSetting, SCHEMA_VERSION, ACCOUNT_TYPES, SUBTYPES, PERMISSIONS, BUILTIN_ROLES };
+module.exports = { openDb, migrate8, MIGRATION_9, purgeImportedDocuments, tx, getSetting, setSetting, SCHEMA_VERSION, ACCOUNT_TYPES, SUBTYPES, PERMISSIONS, BUILTIN_ROLES };

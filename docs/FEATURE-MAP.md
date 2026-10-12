@@ -17,13 +17,14 @@ Built from the research in `docs/research/quickbooks-advanced-reference.md`. We 
 ## Sales & receivables
 | Capability | Status | Notes |
 |---|---|---|
-| Customers, items, invoices, payments, voids | ✔ | |
+| Customers, items, invoices, payments, voids | ✔ | Items screen ✔ |
 | Estimates → invoices, progress invoicing | ○ | |
-| Credit memos, refunds, customer deposits | ○ | Overpayments can be left as unapplied credit on A/R |
+| Credit memos, refunds, customer deposits | ◐ | Credit memos with sales tax, apply to invoices, cash refunds ✔; customer deposits ○ |
 | Online payment links / card & ACH processing | ✖ for core | Would require a payment-processor integration (opt-in plug-in) |
 | Late fees, reminders, recurring invoices | ○ | Needs a scheduler + e-mail (opt-in) |
 | Sales tax | ✔ | Tax rates and combined rates (state + county), tax per invoice line, tax-exempt customers, a return worksheet for any period, payments to the agencies. Counts sales by invoice date (accrual); no automatic rate lookup by address; no sales tax on credit memos yet |
-| PDF/e-mail invoices | ◐ | Print view ✔; PDF/e-mail ○ |
+| PDF/e-mail invoices | ✔ | Save as PDF with logo and address ✔; e-mail opens a draft in your mail program (no sending from Ledjoro) |
+| Edit an invoice | ◐ | Copy as new ✔ and Correct (void and replace in one step) ✔; in-place editing is deliberately not offered |
 
 ## Purchases & payables
 | Capability | Status | Notes |

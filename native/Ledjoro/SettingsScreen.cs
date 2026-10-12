@@ -77,6 +77,69 @@ namespace Ledjoro
             }), 0);
             else card.Add(new Lbl("Only administrators can change these.", LS.Muted));
             body.Add(card);
+            body.Add(ProfileCard(await A.Get("api/profile")));
+        }
+
+        /// <summary>What is printed at the top of invoices and credit memos: the logo, address and contact details, and a note for the bottom.</summary>
+        Card ProfileCard(Jv p)
+        {
+            bool canEdit = A.Can("settings.manage");
+            var c = new Card(); c.Padding = new Padding(Theme.Px(24)); c.Gap = Theme.Px(10);
+            c.Add(new Lbl("Printed on invoices", LS.H3));
+            c.Add(new Lbl("These details appear at the top of invoices and credit memos you save as PDF or print. Leave anything you do not want shown empty.", LS.Muted, true), Theme.Px(2));
+            Func<string, string, int, Input> box = (key, cue, w) => new Input(cue) { Text = p[key].Str ?? "", Width = Theme.Px(w) };
+            var street = box("street", "Street address", 420); var street2 = box("street2", "Suite or unit (optional)", 420); var city = box("city", "City", 240);
+            var state = box("state", "NH", 70); state.Tb.MaxLength = 2; var zip = box("zip", "ZIP code", 130); zip.Tb.MaxLength = 10;
+            var phone = box("phone", "Phone", 220); var email = box("email", "billing@example.com", 300); var web = box("website", "www.example.com", 300);
+            var taxid = box("taxid", "Tax ID shown on invoices (optional)", 300);
+            var note = box("note", "For example: Please pay within 30 days by check or bank transfer.", 700);
+            c.Add(Ui.F("Street address", street, 420)); c.Add(Ui.F("Suite or unit", street2, 420));
+            var r = new Flow { Fill = Pnl.K.Surface }; r.Add(Ui.F("City", city, 240)); r.Add(Ui.F("State", state, 90)); r.Add(Ui.F("ZIP code", zip, 140)); c.Add(r);
+            var r2 = new Flow { Fill = Pnl.K.Surface }; r2.Add(Ui.F("Phone", phone, 220)); r2.Add(Ui.F("Email", email, 300)); r2.Add(Ui.F("Website", web, 300)); c.Add(r2);
+            c.Add(Ui.F("Tax ID (optional)", taxid, 300));
+            c.Add(Ui.F("Note at the bottom of invoices (payment instructions, thanks)", note, 700));
+
+            // the logo: shown small, chosen from a picture file, kept inside the books so it is in every backup
+            string logo = p["logo"].Str ?? ""; bool logoChanged = false;
+            var preview = new System.Windows.Forms.PictureBox { SizeMode = PictureBoxSizeMode.Zoom, Width = Theme.Px(200), Height = Theme.Px(70), BackColor = System.Drawing.Color.White, Visible = logo.Length > 0 };
+            Action showLogo = () =>
+            {
+                if (preview.Image != null) { preview.Image.Dispose(); preview.Image = null; }
+                if (logo.Length > 0) { try { using (var ms = new System.IO.MemoryStream(Convert.FromBase64String(logo))) preview.Image = new System.Drawing.Bitmap(ms); } catch (Exception) { } }
+                preview.Visible = preview.Image != null;
+            };
+            showLogo();
+            var logoRow = new Flow { Fill = Pnl.K.Surface, HGap = Theme.Px(12) };
+            logoRow.Add(preview);
+            if (canEdit)
+            {
+                logoRow.Add(Ui.B("Choose Logo\u2026", BK.Normal, () =>
+                {
+                    using (var dlg = new OpenFileDialog { Title = "Choose your logo", Filter = "Pictures (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif" })
+                    {
+                        if (dlg.ShowDialog(App.Main) != DialogResult.OK) return;
+                        try { int w, h; logo = Convert.ToBase64String(InvoicePdf.LogoJpeg(dlg.FileName, out w, out h)); logoChanged = true; showLogo(); body.PerformLayout(); page.PerformLayout(); }
+                        catch (Exception) { Msg.Info("That picture could not be read", "Choose a PNG, JPEG, BMP or GIF picture file.", true); }
+                    }
+                }));
+                logoRow.Add(Ui.B("Remove Logo", BK.Normal, () => { logo = ""; logoChanged = true; showLogo(); body.PerformLayout(); page.PerformLayout(); }));
+            }
+            c.Add(new Lbl("Logo", LS.Muted), Theme.Px(2)); c.Add(logoRow);
+
+            var err = new Notice(NK.Error); c.Add(err);
+            if (canEdit) c.Add(Ui.BA("Save Invoice Details", BK.Primary, async () =>
+            {
+                err.Reset();
+                try
+                {
+                    var b = Json.O("street", street.Text.Trim(), "street2", street2.Text.Trim(), "city", city.Text.Trim(), "state", state.Text.Trim(), "zip", zip.Text.Trim(),
+                        "phone", phone.Text.Trim(), "email", email.Text.Trim(), "website", web.Text.Trim(), "taxid", taxid.Text.Trim(), "note", note.Text.Trim());
+                    if (logoChanged) b["logo"] = logo.Length > 0 ? (object)logo : null;
+                    await A.Put("api/profile", b); logoChanged = false; App.Toast("Saved");
+                }
+                catch (ApiException e) { err.Set(e.Message); }
+            }), 0);
+            return c;
         }
 
         // ---------------------------------------------------------------- automatic backups

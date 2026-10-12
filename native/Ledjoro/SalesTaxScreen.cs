@@ -59,7 +59,7 @@ namespace Ledjoro
             foreach (var x in r["rates"].Items)
             {
                 bool grp = x["kind"].Str == "group"; var names = x["parts"].Items.Select(p => r["rates"].Items.First(y => y["id"].Long == p.Long)["name"].Str);
-                string tag = x["id"].Long == def ? "default" : x["active"].Long == 0 ? "switched off" : "";
+                string tag = x["id"].Long == def ? "Default" : x["active"].Long == 0 ? "Switched off" : "";
                 g.Add(x, x["name"].Str, grp ? "Combined: " + string.Join(" + ", names) : "Single rate", Pct(x["rate_milli"].Long), x["agency"].Str, x["account_name"].IsNull || x["account_name"].Str.Length == 0 ? "Sales Tax Payable" : x["account_name"].Str, tag);
             }
             if (write) g.Activated += tag => Ui.Run(() => { var j = (Jv)tag; return EditRate(j, j["kind"].Str == "group", r, accts); });
@@ -233,7 +233,7 @@ namespace Ledjoro
             foreach (var p in list.Items)
             {
                 string per = p["period_from"].Str.Length > 0 ? Fmt.Show(p["period_from"].Str) + " to " + Fmt.Show(p["period_to"].Str) : "";
-                g.Add(p["id"].Long, Fmt.Show(p["pay_date"].Str), p["agency"].Str, per, Fmt.Money(p["amount_cents"].Long), p["bank_name"].Str, p["voided"].Long == 1 ? new GC("void", Theme.Bad) : new GC("paid", Theme.Good));
+                g.Add(p["id"].Long, Fmt.Show(p["pay_date"].Str), p["agency"].Str, per, Fmt.Money(p["amount_cents"].Long), p["bank_name"].Str, p["voided"].Long == 1 ? new GC("Void", Theme.Bad) : new GC("Paid", Theme.Good));
             }
             outBox.Add(g);
             if (list.Count == 0) outBox.Add(new Lbl("No payments to a tax agency have been recorded. When you pay a return, record it here so the Sales Tax Payable balance goes down.", LS.Muted, true));

@@ -23,7 +23,7 @@ namespace Ledjoro
             foreach (var c in all.Items.Where(c => c["kind"].Str == kind))
             {
                 long bal = c["ledger_balance_cents"].Long;
-                grid.Add(c, c["name"].Str, c["email"].Str, Fmt.Phone(c["phone"].Str), "Net " + c["terms_days"].Str, Fmt.Money(Customer ? bal : -bal), c["active"].Bool ? "" : "inactive");
+                grid.Add(c, c["name"].Str, c["email"].Str, Fmt.Phone(c["phone"].Str), "Net " + c["terms_days"].Str, Fmt.Money(Customer ? bal : -bal), c["active"].Bool ? "" : "Inactive");
             }
             root.AddFill(grid);
             if (CanWrite) grid.Activated += tag => Ui.Run(() => Edit((Jv)tag));

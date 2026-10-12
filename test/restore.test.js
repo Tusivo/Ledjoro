@@ -135,7 +135,7 @@ test('restore: a backup from an older schema (no asset register) restores cleanl
     assert.equal(r.status, 200, r.text);
     assert.equal(r.json.schema_version, 1);
     assert.deepEqual(s.db.prepare('SELECT name FROM contacts').all().map((c) => c.name), ['Old Schema Co']);
-    assert.equal(s.db.prepare('PRAGMA user_version').get().user_version, 8, 'the live database keeps the current schema');
+    assert.equal(s.db.prepare('PRAGMA user_version').get().user_version, 9, 'the live database keeps the current schema');
     assert.equal(s.db.prepare('SELECT COUNT(*) n FROM fixed_assets').get().n, 0, 'the asset table exists and is empty');
     const again = await loginAs(s, 'admin');
     assert.equal((await again.post('/api/assets', { name: 'New asset', cost_cents: 10000, in_service: '2026-01-01', life_months: 12 })).status, 200);

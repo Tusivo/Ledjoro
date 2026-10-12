@@ -193,7 +193,7 @@ test('opening a version-1 database upgrades it in place (adds the asset register
   db.prepare("INSERT INTO contacts(kind,name,created_at) VALUES ('customer','Keep Me',0)").run();
   db.close();
   const up = openDb(f);
-  assert.equal(up.prepare('PRAGMA user_version').get().user_version, 8);
+  assert.equal(up.prepare('PRAGMA user_version').get().user_version, 9);
   assert.equal(up.prepare("SELECT COUNT(*) n FROM contacts WHERE name='Keep Me'").get().n, 1);
   assert.equal(up.prepare('SELECT COUNT(*) n FROM fixed_assets').get().n, 0);
   up.close();

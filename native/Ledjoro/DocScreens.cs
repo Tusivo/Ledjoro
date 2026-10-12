@@ -35,7 +35,7 @@ namespace Ledjoro
             grid.Clear();
             foreach (var d in rows.Items)
             {
-                string st = d["status"].Str; GC cell = d["overdue"].Long == 1 ? new GC("Overdue", Theme.Bad, true) : st == "paid" ? new GC("paid", Theme.Good) : st == "void" ? new GC("void", Theme.Muted) : new GC(st);
+                string st = d["status"].Str; GC cell = d["overdue"].Long == 1 ? new GC("Overdue", Theme.Bad, true) : st == "paid" ? new GC("Paid", Theme.Good) : st == "void" ? new GC("Void", Theme.Muted) : new GC(Fmt.Cap(st));
                 grid.Add(d["id"].Long, d["number"].Str, d["contact_name"].Str, Fmt.Show(d["doc_date"].Str), Fmt.Show(d["due_date"].Str), Fmt.Money(d["total_cents"].Long), Fmt.Money(d["total_cents"].Long - d["paid_cents"].Long), cell);
             }
             if (grid.Rows.Count == 0) App.Toast("No " + (status == "all" ? "" : status + " ") + kind + "s.");
@@ -57,7 +57,7 @@ namespace Ledjoro
             var page = new ScrollPage(); var s = page.Body;
 
             var head = new Header((inv ? "Invoice " : "Bill ") + d["number"].Str, d["contact_name"].Str + "   ·   " + Fmt.Show(d["doc_date"].Str) + "   ·   due " + Fmt.Show(d["due_date"].Str));
-            head.AddAction(new Pill(status, status == "paid" ? PK.Good : status == "void" ? PK.Bad : PK.Neutral));
+            head.AddAction(new Pill(Fmt.Cap(status), status == "paid" ? PK.Good : status == "void" ? PK.Bad : PK.Neutral));
             var lines = new Grid { AutoHeight = true };
             lines.Cols(Grid.Col("Description", 3f), Grid.Col(">Qty", 0.8f), Grid.Col(">Price", 1.2f), Grid.Col(">Amount", 1.2f), Grid.Col("Account", 2f));
             foreach (var l in d["lines"].Items) lines.Add(null, l["description"].Str, Fmt.Qty(l["qty_milli"].Long), Fmt.Money(l["unit_price_cents"].Long), Fmt.Money(l["amount_cents"].Long), l["account_name"].Str);
@@ -74,9 +74,19 @@ namespace Ledjoro
 
             var pays = new Grid { AutoHeight = true };
             pays.Cols(Grid.Col("Date", 1f), Grid.Col("Method", 1.2f), Grid.Col("Reference", 1.4f), Grid.Col(">Amount", 1.2f), Grid.Col("Status", 1f));
-            foreach (var p in d["payments"].Items) pays.Add(p["payment_id"].Long, Fmt.Show(p["pay_date"].Str), p["method"].Str, p["ref"].Str, Fmt.Money(p["amount_cents"].Long), p["voided"].Long == 1 ? new GC("void", Theme.Bad) : new GC("applied", Theme.Good));
+            foreach (var p in d["payments"].Items) pays.Add(p["payment_id"].Long, Fmt.Show(p["pay_date"].Str), p["method"].Str, p["ref"].Str, Fmt.Money(p["amount_cents"].Long), p["voided"].Long == 1 ? new GC("Void", Theme.Bad) : new GC("Applied", Theme.Good));
 
             head.AddAction(Ui.B("Print", BK.Normal, () => PrintHelper.Print((inv ? "Invoice " : "Bill ") + d["number"].Str, d["contact_name"].Str + " — " + Fmt.Show(d["doc_date"].Str), lines, pays), true));
+            head.AddAction(Ui.BA("Save as PDF", BK.Normal, () => PdfActions.Save(d, false, false), true));
+            if (inv) head.AddAction(Ui.BA("Email", BK.Normal, () => PdfActions.Save(d, false, true), true));
+            if (write && inv) head.AddAction(Ui.B("Copy", BK.Normal, () => Nav("#/invoices/new?copy=" + id), true));
+            if (write && inv && status == "open" && paid == 0) head.AddAction(Ui.B("Correct", BK.Normal, () => Nav("#/invoices/new?replace=" + id), true));
+            if (write && inv && status == "open")
+            {   // credits this customer still has to spend
+                var open = await A.Get("api/credits?status=open");
+                var mine = open.Items.Where(c => c["contact_id"].Long == d["contact_id"].Long).ToList();
+                if (mine.Count > 0) head.AddAction(Ui.BA("Apply a Credit", BK.Normal, () => ApplyCredit(d, mine), true));
+            }
             if (write && status == "open") head.AddAction(Ui.BA(inv ? "Receive payment" : "Pay bill", BK.Primary, () => PaymentDialog(d), true));
             if (write && status != "void" && paid == 0) head.AddAction(Ui.BA("Void", BK.Danger, async () =>
             {
@@ -86,6 +96,19 @@ namespace Ledjoro
             s.Add(head);
             s.Add(lines);
             if (d["memo"].Str.Length > 0) s.Add(new Lbl(d["memo"].Str, LS.Muted, true));
+            if (d["credits"].Count > 0)
+            {
+                s.Add(new Lbl("Credits applied", LS.H2));
+                var cg = new Grid { AutoHeight = true }; cg.Cols(Grid.Col("Credit memo", 2f), Grid.Col("Applied on", 1.4f), Grid.Col(">Amount", 1.2f));
+                foreach (var c in d["credits"].Items) cg.Add(c["id"].Long, c["number"].Str, Fmt.Show(c["applied_on"].Str), Fmt.Money(c["amount_cents"].Long));
+                s.Add(cg);
+                if (write && status != "void") s.Add(Ui.BA("Remove Selected Credit", BK.Normal, async () =>
+                {
+                    var tag = cg.SelectedTag; if (!(tag is long)) { App.Toast("Click a credit in the list first."); return; }
+                    if (!Msg.Confirm("Take this credit back off the invoice?", "The invoice owes that amount again, and the credit memo can be used elsewhere.", "Remove Credit")) return;
+                    await A.Post("api/credits/applications/" + tag + "/remove"); App.Toast("Credit removed"); App.Main.Reload();
+                }, true), 0);
+            }
             if (pays.Rows.Count > 0)
             {
                 s.Add(new Lbl("Payments", LS.H2));
@@ -98,6 +121,26 @@ namespace Ledjoro
                 }, true), 0);
             }
             SetBody(page);
+        }
+
+        async Task ApplyCredit(Jv d, List<Jv> credits)
+        {
+            long due = d["total_cents"].Long - d["paid_cents"].Long;
+            var dlg = new Dlg("Apply a Credit", 560);
+            var pick = Ui.Cb(credits.Select(c => Ui.It(c["id"].Str, c["number"].Str + "  (" + Fmt.Money(c["remaining_cents"].Long) + " left)")), credits[0]["id"].Str, 360);
+            var amt = new Input("0.00") { RightAlign = true };
+            Action fill = () => { var c = credits.First(x => x["id"].Str == pick.Value); amt.Text = Fmt.Plain(Math.Min(c["remaining_cents"].Long, due)); };
+            pick.Changed += (a, b) => fill(); fill();
+            dlg.Body.Add(new Lbl("This invoice still owes " + Fmt.Money(due) + ". Choose a credit memo and how much of it to use.", LS.Normal, true));
+            var f = new Flow { Fill = Pnl.K.Surface }; f.Add(Ui.F("Credit memo", pick, 360)); f.Add(Ui.F("Amount to apply", amt, 150)); dlg.Body.Add(f);
+            dlg.Cancel();
+            dlg.Primary("Apply Credit", async () =>
+            {
+                long cents; if (!Fmt.TryMoney(amt.Text, out cents) || cents <= 0) throw new ApiException(0, Say.Money("amount"), Jv.Null);
+                await A.Post("api/credits/" + pick.Value + "/apply", Json.O("document_id", d["id"].Long, "amount_cents", cents));
+                App.Toast("Credit applied"); App.Main.Reload(); return true;
+            });
+            dlg.Run();
         }
 
         async Task PaymentDialog(Jv d)
@@ -125,8 +168,9 @@ namespace Ledjoro
     // ------------------------------------------------------------ new invoice / bill
     sealed class DocFormScreen : Screen
     {
-        readonly string kind;
-        public DocFormScreen(string kind) { this.kind = kind; }
+        readonly string kind; readonly long copyId, replaceId;
+        /// <summary>kind is "invoice", "bill" or "credit" (a credit memo). copyId starts from a copy of an invoice; replaceId corrects one (the original is voided when the new one is saved).</summary>
+        public DocFormScreen(string kind, long copyId = 0, long replaceId = 0) { this.kind = kind; this.copyId = copyId; this.replaceId = replaceId; }
 
         sealed class Line : RowLayout
         {
@@ -154,10 +198,13 @@ namespace Ledjoro
 
         public override async Task Load()
         {
-            bool inv = kind == "invoice"; var A0 = App.Api;
+            bool credit = kind == "credit"; bool inv = kind == "invoice" || credit; var A0 = App.Api;
+            Jv source = null; long fromId = replaceId > 0 ? replaceId : copyId;
+            if (fromId > 0 && kind == "invoice") source = await A0.Get("api/documents/" + fromId);
             var contacts = await Lists.Contacts(); var items = await Lists.Items(); var accts = await Lists.Accounts(); var taxJ = inv ? await Lists.TaxRates() : null;
             var page = new ScrollPage(); var s = page.Body;
-            s.Add(new Header(inv ? "New Invoice" : "New Bill"));
+            s.Add(new Header(credit ? "New Credit Memo" : replaceId > 0 && source != null ? "Correct Invoice " + source["number"].Str : copyId > 0 && source != null ? "New Invoice (copy of " + source["number"].Str + ")" : inv ? "New Invoice" : "New Bill"));
+            if (replaceId > 0 && source != null) s.Add(new Notice(NK.Warn, "Saving this makes a new invoice and voids " + source["number"].Str + " in the same step. The new invoice gets a new number."));
 
             var contact = Ui.Cb(Ui.ContactItems(contacts, inv ? "customer" : "vendor", inv ? "Choose a customer…" : "Choose a vendor…"), "");
             var date = new DateInput(Fmt.Today(), 250); var due = new DateInput("", 250); due.Cue = "automatic"; var number = new Input("Automatic"); var memo = new Input("Memo (optional)") { Width = Theme.Px(520) };
@@ -172,7 +219,7 @@ namespace Ledjoro
                 })));
                 f.Add(Ui.F(" ", addPerson, 150));
             }
-            f.Add(Ui.F("Date", date, 170)); f.Add(Ui.F("Due date (optional)", due, 170)); f.Add(Ui.F("Number", number, 170));
+            f.Add(Ui.F("Date", date, 170)); if (!credit) f.Add(Ui.F("Due date (optional)", due, 170)); f.Add(Ui.F("Number", number, 170));
             Combo taxRate = null; Lbl taxNote = null; Func<Jv> chosenContact = () => contacts.Items.FirstOrDefault(c => c["id"].Str == contact.Value);
             if (inv && taxJ["rates"].Items.Any(r => r["active"].Long == 1))
             {
@@ -214,7 +261,22 @@ namespace Ledjoro
             Action<Line> remove = null;
             Func<Line> addLine = () => { var l = new Line(items, accts, inv, recalc, remove); rows.Add(l); linesBox.Add(l, 4); recalc(); return l; };
             remove = l => { if (rows.Count <= 1) return; rows.Remove(l); linesBox.Controls.Remove(l); l.Dispose(); linesBox.PerformLayout(); page.PerformLayout(); recalc(); };
-            addLine();
+            if (source != null && source["lines"].Count > 0)
+            {   // a copy or a correction starts from the original invoice's customer, tax rate, memo and lines
+                contact.Value = source["contact_id"].Str;
+                if (taxRate != null) taxRate.Value = source["tax_rate_id"].IsNull || source["tax_rate_id"].Long == 0 ? "" : source["tax_rate_id"].Str;
+                string m = source["memo"].Str ?? ""; int at = m.IndexOf(". "); if (m.StartsWith("Replaces ") && at > 0) m = m.Substring(at + 2); memo.Text = m;
+                foreach (var sl in source["lines"].Items)
+                {
+                    var l = addLine();
+                    if (!sl["item_id"].IsNull && sl["item_id"].Long > 0) l.Item.Value = sl["item_id"].Str;
+                    l.Desc.Text = sl["description"].Str; l.Qty.Text = Fmt.Qty(sl["qty_milli"].Long); l.Price.Text = Fmt.Plain(sl["unit_price_cents"].Long);
+                    if (sl["account_id"].Long > 0) l.Account.Value = sl["account_id"].Str;
+                    l.Tax.Checked = sl["taxable"].Long == 1;
+                }
+                recalc();
+            }
+            else addLine();
             s.Add(linesBox);
 
             var err = new Notice(NK.Error);
@@ -242,15 +304,17 @@ namespace Ledjoro
                         if (inv) line["taxable"] = r.Tax.Checked;
                         lines.Add(line);
                     }
-                    var body = Json.O("kind", kind, "contact_id", long.Parse(contact.Value), "doc_date", date.Value, "memo", memo.Text, "lines", lines);
-                    if (due.Text.Trim().Length > 0) body["due_date"] = due.Value; if (number.Text.Trim().Length > 0) body["number"] = number.Text.Trim();
+                    var body = credit ? Json.O("contact_id", long.Parse(contact.Value), "memo_date", date.Value, "memo", memo.Text, "lines", lines)
+                                      : Json.O("kind", kind, "contact_id", long.Parse(contact.Value), "doc_date", date.Value, "memo", memo.Text, "lines", lines);
+                    if (!credit && due.Text.Trim().Length > 0) body["due_date"] = due.Value; if (number.Text.Trim().Length > 0) body["number"] = number.Text.Trim();
                     if (inv && taxRate != null && taxRate.Value.Length > 0) body["tax_rate_id"] = long.Parse(taxRate.Value);
-                    var res = await A.Post("api/documents", body);
-                    App.Toast((inv ? "Invoice" : "Bill") + " saved"); Nav("#/document/" + res["id"].Str);
+                    if (replaceId > 0 && !credit) body["replaces_id"] = replaceId;
+                    var res = await A.Post(credit ? "api/credits" : "api/documents", body);
+                    App.Toast((credit ? "Credit memo" : inv ? "Invoice" : "Bill") + " saved"); Nav((credit ? "#/credit/" : "#/document/") + res["id"].Str);
                 }
                 catch (ApiException e) { err.Set(e.Message); }
             }));
-            actions.Add(Ui.B("Cancel", BK.Normal, () => Nav(inv ? "#/invoices" : "#/bills")));
+            actions.Add(Ui.B("Cancel", BK.Normal, () => Nav(credit ? "#/credits" : replaceId > 0 ? "#/document/" + replaceId : inv ? "#/invoices" : "#/bills")));
             s.Add(new Field("Memo", memo, 520)); s.Add(actions);
             SetBody(page);
         }
