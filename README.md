@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/ledjoro-icon.png" alt="The Ledjoro icon: an open ledger book on a blue tile" width="128" height="128"></p>
+
 # Ledjoro
 
 **Free, private accounting for small businesses on Windows.** Invoices, bills, bank reconciliation and reports, with your books kept in a file on your own computer. No account to create, no subscription, nothing sent anywhere.
